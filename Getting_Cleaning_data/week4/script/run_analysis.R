@@ -31,6 +31,8 @@ if (!require(dplyr)) {
 download <- function() {
     fileurl = "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
     download.file(fileurl, destfile = "accelerometer_Samsung_Galaxy_S.zip")
+    ## downloaded date
+    date()
 }
 
 ## prepare dataset
@@ -40,11 +42,7 @@ if (!file.exists(dataPath)) {
     unzip(dataPath)
     file.rename("UCI HAR Dataset", "data")
 }
-## unzip files
 
-
-## downloaded Fri Dec 28 23:02:20 2018
-date()
 
 
 ## read in data
@@ -74,11 +72,10 @@ dim(subject_train)
 ## select features that are means or standard deviations
 selectedfeatureIndex <- grep("mean|std", feature_names$V2)
 selectedfeatureName <- feature_names$V2[selectedfeatureIndex]
-selectedfeatureName <- make.names(selectedfeatureName) # make feature names more suited for column names
 train.X.selected <- train.X[,selectedfeatureIndex]
 test.X.selected <- test.X[,selectedfeatureIndex]
 data.X <- rbind(train.X.selected, test.X.selected)
-colnames(data.X) <- selectedfeatureName
+colnames(data.X) <- make.names(selectedfeatureName) # make feature names more suited for column names
 
 ## combine activities of train and test
 data.y <- rbind(train.y, test.y)
@@ -106,7 +103,10 @@ if(!dir.exists("result")) {
     dir.create("result")
 }
 
-write.table(feature_mean, "result/feature_mean.txt", row.names = FALSE, quote = FALSE)
+write.table(feature_mean, "result/feature_mean.txt", sep = ",", row.names = FALSE, quote = FALSE)
+
+## write out the column names for codebook
+write.table(data.frame(name = colnames(feature_mean)), "colname.tsv",sep = "\t", row.names = TRUE, quote = FALSE)
 
 ## clean up folder
 file.remove(dataPath)
