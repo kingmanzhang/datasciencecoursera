@@ -5,21 +5,47 @@
 ## Download a dataset on mobile tracking for activity recognition and clean the dataset to produce a summary of features.
 
 
-## set up working directory
-setwd("~/git/datasciencecoursera/Getting_Cleaning_data/week4")
+## set up working directory by overwriting the "wd" variable. Default to user home directory.
+wd <- "~"
+if (dir.exists("~/git/datasciencecoursera/Getting_Cleaning_data/week4")) {
+    setwd("~/git/datasciencecoursera/Getting_Cleaning_data/week4")
+} else if (dir.exists(wd)) {
+    setwd(wd)
+} else {
+    stop("specified working directory not found")
+}
+
 
 ## load libraries
-library(dplyr)
-library(purrr)
+if (!require(dplyr)) {
+    install.packages("dplyr")
+    if (!require(dplyr)) {
+        stop("dplyr cannot be installed")
+    }
+}
 
 ## download data collected from the accelerometers from the Samsung Galaxy S smartphone
 ## unzip the files to the data directory
 ## the desired data files are in test and train folders: 
 ## test/X_test.txt, test/y_test.txt, train/X_train.txt, train/y_train.txt
-fileurl = "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
-download.file(fileurl, destfile = "data/accelerometer_Samsung_Galaxy_S.zip")
+download <- function() {
+    fileurl = "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+    download.file(fileurl, destfile = "accelerometer_Samsung_Galaxy_S.zip")
+}
+
+## prepare dataset
+dataPath = "accelerometer_Samsung_Galaxy_S.zip"
+if (!file.exists(dataPath)) {
+    download()
+    unzip(dataPath)
+    file.rename("UCI HAR Dataset", "data")
+}
+## unzip files
+
+
 ## downloaded Fri Dec 28 23:02:20 2018
 date()
+
 
 ## read in data
 activity_labels <- read.table("data/activity_labels.txt", sep = "", header = FALSE)
@@ -71,7 +97,17 @@ data <- cbind(data.subject, data.X, data.y)
 ## extract only the measurements on the mean and standard deviation for each measurement 
 data$subjectId <- as.factor(data$subjectId)
 feature_mean <- data %>% group_by(subjectId, activity) %>% summarise_all(funs(mean))
-View(feature_mean)
+## rename the feature names by adding a prefix "mean"
+feature_mean_name <- paste("mean", selectedfeatureName, sep = ".")
+colnames(feature_mean) <- c("subjectId", "activity", feature_mean_name)
 
 ##write out the outcome as a CSV file
-write.csv(feature_mean, "result/feature_mean.csv", row.names = FALSE, quote = FALSE)
+if(!dir.exists("result")) {
+    dir.create("result")
+}
+
+write.table(feature_mean, "result/feature_mean.txt", row.names = FALSE, quote = FALSE)
+
+## clean up folder
+file.remove(dataPath)
+unlink("data", recursive = TRUE)
