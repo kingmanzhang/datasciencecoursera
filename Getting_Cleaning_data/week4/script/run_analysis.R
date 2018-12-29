@@ -1,0 +1,77 @@
+## author: Xingmin Aaron Zhang
+## Getting and Cleaning Data
+## Week 4 assignment
+## Goal: 
+## Download a dataset on mobile tracking for activity recognition and clean the dataset to produce a summary of features.
+
+
+## set up working directory
+setwd("~/git/datasciencecoursera/Getting_Cleaning_data/week4")
+
+## load libraries
+library(dplyr)
+library(purrr)
+
+## download data collected from the accelerometers from the Samsung Galaxy S smartphone
+## unzip the files to the data directory
+## the desired data files are in test and train folders: 
+## test/X_test.txt, test/y_test.txt, train/X_train.txt, train/y_train.txt
+fileurl = "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+download.file(fileurl, destfile = "data/accelerometer_Samsung_Galaxy_S.zip")
+## downloaded Fri Dec 28 23:02:20 2018
+date()
+
+## read in data
+activity_labels <- read.table("data/activity_labels.txt", sep = "", header = FALSE)
+feature_names <- read.table("data/features.txt", sep = "", header = FALSE)
+test.X <- read.table("data/test/X_test.txt", sep = "", header = FALSE, colClasses = "numeric")
+test.y <- read.table("data/test/y_test.txt", sep = "", header = FALSE, colClasses = "numeric")
+train.X <- read.table("data/train/X_train.txt", sep = "", header = FALSE, colClasses = "numeric")
+train.y <- read.table("data/train/y_train.txt", sep = "", header = FALSE, colClasses = "numeric")
+subject_test <- read.table("data/test/subject_test.txt", header = FALSE, colClasses = "numeric")
+subject_train <- read.table("data/train/subject_train.txt", header = FALSE, colClasses = "numeric")
+
+#body_acc_x_test <- read.table("data/test/Inertial Signals/body_acc_x_test.txt", header = FALSE, colClasses = "numeric")
+#body_acc_y_test <- read.table("data/test/Inertial Signals/body_acc_y_test.txt", header = FALSE, colClasses = "numeric")
+#body_acc_z_test <- read.table("data/test/Inertial Signals/body_acc_z_test.txt", header = FALSE, colClasses = "numeric")
+#body_gyro_x_test <- read.table("data/test/Inertial Signals/body_gyro_x_test.txt", header = FALSE, colClasses = "numeric")
+
+
+## check head of files to make sure they are correctly loaded
+dim(test.X)
+dim(test.y)
+dim(train.X)
+dim(train.y)
+dim(subject_test)
+dim(subject_train)
+
+## select features that are means or standard deviations
+selectedfeatureIndex <- grep("mean|std", feature_names$V2)
+selectedfeatureName <- feature_names$V2[selectedfeatureIndex]
+selectedfeatureName <- make.names(selectedfeatureName) # make feature names more suited for column names
+train.X.selected <- train.X[,selectedfeatureIndex]
+test.X.selected <- test.X[,selectedfeatureIndex]
+data.X <- rbind(train.X.selected, test.X.selected)
+colnames(data.X) <- selectedfeatureName
+
+## combine activities of train and test
+data.y <- rbind(train.y, test.y)
+colnames(data.y) <- "activityId"
+## change activities Id to activities labels
+colnames(activity_labels) <- c("activityId", "activity")
+data.y <- data.y %>% left_join(activity_labels, by = "activityId") %>% select(activity)
+
+## combine the subjects of train and test
+data.subject <- rbind(subject_train, subject_test)
+colnames(data.subject) <- "subjectId"
+
+## combine subject, feature matrix (subset) and activity together
+data <- cbind(data.subject, data.X, data.y)
+
+## extract only the measurements on the mean and standard deviation for each measurement 
+data$subjectId <- as.factor(data$subjectId)
+feature_mean <- data %>% group_by(subjectId, activity) %>% summarise_all(funs(mean))
+View(feature_mean)
+
+##write out the outcome as a CSV file
+write.csv(feature_mean, "result/feature_mean.csv", row.names = FALSE, quote = FALSE)
