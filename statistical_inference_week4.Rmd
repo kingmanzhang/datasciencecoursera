@@ -16,12 +16,13 @@ expMatrix <- matrix(rexp(n * N, rate = lambda), nrow = N, byrow = TRUE )
 ```
 
 We calculate the mean of these 1000 samples, and create a histogram to show the distribution.
-```{r}
+```{r fig.align="center", fig.width=4, fig.height=4}
 expMean <- rowMeans(expMatrix)
-{hist(expMean, xlab = "mean of 40 exponentials", ylab = "count", main = "histogram of means of exponentials")
-abline(v = mean(expMean), col = "royalblue", lwd = 3)
-text(x = 5, y = 160, labels = paste("mean = ", round(mean(expMean), 2)), pos = 4, col = "red")
-}
+{ hist(expMean, xlab = "mean of 40 exponentials", ylab = "count", 
+      main = "histogram of means of exponentials")
+  abline(v = mean(expMean), col = "royalblue", lwd = 3)
+  text(x = 5, y = 160, labels = paste("mean = ", round(mean(expMean), 2)), pos = 4, 
+     col = "red")}
 ```
 
 For exponential distributions, both the mean and standard deviation is 1/lambda. For a sample of size n, the mean is still 1/lamba and the standard deviation of the mean will be 1/(lambda * sqrt(n)). If we compare the number with the theoretical values, we can see that they match quite well.
@@ -40,11 +41,12 @@ We can also fit the above histogram with a normal distribution curve and found t
 
 ```{r fig.width=9, fig.height=5, fig.align='center'}
 par(mfrow = c(1, 2))
-{hist(expMean, xlab = "mean of samples (n = 40)", ylab = "fraction", main = "distribution of means of samples", freq = FALSE)
-abline(v = mean(expMean), col = "royalblue", lwd = 3)
-text(x = 6, y = 0.3, labels = "theoretical\nnormal\ncurve", pos = 4, col = "red")
-x <- seq(2, 8, by = 0.2)
-curve(dnorm(x, mean = mean(expMean), sd = sd(expMean)),add = TRUE, col = "red", lwd = 2)
+{ hist(expMean, xlab = "mean of samples (n = 40)", ylab = "fraction", 
+      main = "distribution of means of samples", freq = FALSE)
+  abline(v = mean(expMean), col = "royalblue", lwd = 3)
+  text(x = 6, y = 0.3, labels = "theoretical\nnormal\ncurve", pos = 4, col = "red")
+  x <- seq(2, 8, by = 0.2)
+  curve(dnorm(x, mean = mean(expMean), sd = sd(expMean)),add = TRUE, col = "red", lwd = 2)
 }
 
 {
