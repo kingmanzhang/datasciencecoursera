@@ -19,7 +19,7 @@ str(ToothGrowth)
 ```
 
 We also look at what combinations of supplements and doses were used in this experiment. Each supplement was used at three doses, 0.5, 1 and 2, so there were a total of 6 conditions.
-```{r}
+```{r warning=FALSE}
 library(dplyr)
 ToothGrowth %>% select(supp, dose) %>% distinct()
 ```
@@ -90,3 +90,16 @@ Result: The t statistic is not in the 95 percent confidence interval (two-sided,
 t.test(s$VC.0.5, s$VC.2, alternative = "less", paired = FALSE)
 ```
 Result: The t statistic is not in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
+
+```{r}
+t.test.p <- function(x, ...) {
+  result = t.test(x, ...)
+  result$p.value
+}
+
+p_matrix <-sapply(s, function(x) sapply(s, function(y) t.test.p(x, y)))
+alpha = 0.05
+result_matrix <- ifelse(p_matrix < alpha / 36, p_matrix, " ")
+print(result_matrix, quote = FALSE)
+```
+

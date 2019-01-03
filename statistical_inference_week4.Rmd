@@ -6,6 +6,7 @@ output: pdf_document
 
 In this project, we will investigate the exponential distribution in R and compare it with the Central Limit Theorem. The exponential distribution can be simulated in R with rexp(n, lambda) where lambda is the rate parameter. The mean of exponential distribution is 1/lambda and the standard deviation is also 1/lambda. Set lambda = 0.2 for all of the simulations. You will investigate the distribution of averages of 40 exponentials. Note that you will need to do a thousand simulations.
 
+## Simulations
 We randomly sample the exponential distribution (lambda = 0.2) for 40 numbers (n = 40) and repeated do this for 1000 simulations.
 ```{r}
 n = 40
@@ -15,47 +16,61 @@ set.seed(31237)
 expMatrix <- matrix(rexp(n * N, rate = lambda), nrow = N, byrow = TRUE )
 ```
 
-We calculate the mean of these 1000 samples, and create a histogram to show the distribution.
-```{r fig.align="center", fig.width=4, fig.height=4, fig.cap="Figure 1 Distribution of means of 1000 simulations"}
-expMean <- rowMeans(expMatrix)
-{ hist(expMean, xlab = "sample mean (n = 40)", ylab = "count", 
-      main = "histogram of means of exponentials")
-  abline(v = mean(expMean), col = "royalblue", lwd = 3)
-  text(x = 5, y = 160, labels = paste("mean = ", round(mean(expMean), 2)), pos = 4, 
-     col = "red")}
+We plot the numbers of all samples to make sure the simulation works as expected. The plot shows all values for each row (Figure 1). As expected, all row values have pretty similar patterns. 
+```{r fig.align='center', fig.width=4, fig.height=3, fig.cap="sampled data plotted against row index"}
+par(mar=c(2,2,1,1))
+matplot(1:N, expMatrix, type = "p", pch = 19, cex = 0.1, xlab = "row", ylab = "value")
 ```
 
-For exponential distributions, both the mean and standard deviation is 1/lambda. For a sample of size n, the mean is still 1/lamba and the standard deviation of the mean will be 1/(lambda * sqrt(n)). If we compare the number with the theoretical values, we can see that they match quite well.
+## Theoretical means and standard deviations
+For exponential distributions, both the mean and standard deviation is 1/lambda. For a sample of size n, the mean is still 1/lamba and the standard deviation of the mean will be 1/(lambda * sqrt(n)). 
 ```{r}
-mu = 1/lambda
-sd = 1/lambda/sqrt(n)
-meanAndSd <- data.frame(theoretical = c(mu, sd), observed = c(mean(expMean), sd(expMean)))
-rownames(meanAndSd) = c("mean", "sd")
-meanAndSd
+mu_t = 1/lambda
+mu_t
+sd_t = 1/lambda
+sd_t
+```
+
+## Sample means and standard deviations
+We calculate the mean and standard deviation of these 1000 samples, and create a histograms to show their distribution(Figure 2). One can see that the means and standard deviations of samples are pretty close to the theoretical values.
+```{r fig.align="center", fig.width=9, fig.height=3, fig.cap="Distribution of means and standard deviations of 1000 samples"}
+par(mfrow = c(1,2), mar=c(4,4,1,1))
+expMean <- rowMeans(expMatrix)
+{ hist(expMean, xlab = "sample mean (n = 40)", ylab = "count", 
+      main = "histogram of sample means")
+  abline(v = mean(expMean), col = "royalblue", lwd = 3)
+  text(x = 5, y = 160, labels = paste("sample mean = ", round(mean(expMean), 2)), pos = 4, col = "blue")
+  abline(v = mu_t, col = "red", lwd = 3, lty = 3)
+  text(x = 5, y = 130, labels = paste("theoretical mean = ", mu_t), pos = 4, col = "red")}
+expSD <- apply(expMatrix, 1, sd)
+{ hist(expSD, xlab = "sample sd (n = 40)", ylab = "count", 
+      main = "histogram of sample standard deviation")
+  abline(v = mean(expSD), col = "royalblue", lwd = 3)
+  text(x = 5, y = 160, labels = paste("sample sd = ", round(mean(expSD), 2)), pos = 4, col = "blue")
+  abline(v = sd_t, col = "red", lwd = 3, lty = 3)
+  text(x = 5, y = 130, labels = paste("theoretical sd = ", sd_t), pos = 4, col = "red")}
+
 ```
 
 We can make inference about population mean from the simulations, the 95% confidence interval is be [`r round(mean(expMean) + qnorm(0.025) * sd(expMean), 2)` ~ `r round(mean(expMean) + qnorm(0.975) * sd(expMean), 2)`]. Clearly, the theoretical mean (u = 5) is within this interval. 
 
+## Comparison with normal distributions
+We can also fit the above histograms with a normal distribution curve and found that they match very well (Figure 3), which consists with the cental limit theorem.
 
-We can also fit the above histogram with a normal distribution curve and found that they match very well (left). The right side shows the distribution of original values for the simulations. One can see that while the original values follow the exponential distribution, the mean of samples follow normal distribution. 
-
-```{r fig.width=9, fig.height=5, fig.align='center', fig.cap="Figure 2 Distribution of sample means (left) and raw values of samples (right)"}
-par(mfrow = c(1, 2))
-{ hist(expMean, xlab = "mean of samples (n = 40)", ylab = "fraction", 
+```{r fig.width=9, fig.height=3, fig.align='center', fig.cap="Distribution of sample means (left) and raw values of samples (right)"}
+par(mfrow = c(1, 2), mar=c(4,4,1,1))
+{ hist(expMean, xlab = "mean", ylab = "fraction", 
       main = "sample mean (n = 40)", freq = FALSE)
   abline(v = mean(expMean), col = "royalblue", lwd = 3)
   text(x = 6, y = 0.3, labels = "theoretical\nnormal\ncurve", pos = 4, col = "red")
   x <- seq(2, 8, by = 0.2)
   curve(dnorm(x, mean = mean(expMean), sd = sd(expMean)),add = TRUE, col = "red", lwd = 2)
 }
-
-{
-    rawNum <- as.vector(expMatrix)
-    hist(rawNum, freq = FALSE, main = "distribution of raw values in simulation", 
-         xlab = "raw values of samples")
-    x <- seq(min(rawNum), max(rawNum), by = 0.2)
-    curve(dexp(x, rate = lambda), add = TRUE, col = "red", lwd = 2)
-    text(x = 6, y = 0.08, labels = "theoretical exponential\ncurve", pos = 4, col = "red")
+{ hist(expSD, xlab = "standard deviation", ylab = "fraction", 
+      main = "sample standard deviation (n = 40)", freq = FALSE)
+  abline(v = mean(expSD), col = "royalblue", lwd = 3)
+  text(x = 6, y = 0.3, labels = "theoretical\nnormal\ncurve", pos = 4, col = "red")
+  x <- seq(2, 8, by = 0.2)
+  curve(dnorm(x, mean = mean(expSD), sd = sd(expSD)),add = TRUE, col = "red", lwd = 2)
 }
 ```
-
