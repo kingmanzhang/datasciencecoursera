@@ -55,11 +55,6 @@ train.y <- read.table("data/train/y_train.txt", sep = "", header = FALSE, colCla
 subject_test <- read.table("data/test/subject_test.txt", header = FALSE, colClasses = "numeric")
 subject_train <- read.table("data/train/subject_train.txt", header = FALSE, colClasses = "numeric")
 
-#body_acc_x_test <- read.table("data/test/Inertial Signals/body_acc_x_test.txt", header = FALSE, colClasses = "numeric")
-#body_acc_y_test <- read.table("data/test/Inertial Signals/body_acc_y_test.txt", header = FALSE, colClasses = "numeric")
-#body_acc_z_test <- read.table("data/test/Inertial Signals/body_acc_z_test.txt", header = FALSE, colClasses = "numeric")
-#body_gyro_x_test <- read.table("data/test/Inertial Signals/body_gyro_x_test.txt", header = FALSE, colClasses = "numeric")
-
 
 ## check head of files to make sure they are correctly loaded
 dim(test.X)
@@ -95,7 +90,7 @@ data <- cbind(data.subject, data.X, data.y)
 data$subjectId <- as.factor(data$subjectId)
 feature_mean <- data %>% group_by(subjectId, activity) %>% summarise_all(funs(mean))
 ## rename the feature names by adding a prefix "mean"
-feature_mean_name <- paste("mean", selectedfeatureName, sep = ".")
+feature_mean_name <- paste("mean", make.names(selectedfeatureName), sep = "_")
 colnames(feature_mean) <- c("subjectId", "activity", feature_mean_name)
 
 ##write out the outcome as a CSV file
@@ -106,8 +101,13 @@ if(!dir.exists("result")) {
 write.table(feature_mean, "result/feature_mean.txt", sep = ",", row.names = FALSE, quote = FALSE)
 
 ## write out the column names for codebook
-write.table(data.frame(name = colnames(feature_mean)), "colname.tsv",sep = "\t", row.names = TRUE, quote = FALSE)
+name <- colnames(feature_mean)
+note <- c("id of the individual for the study", 
+          "one of six activities performed by the subject", 
+          paste("mean of", selectedfeatureName))
+write.table(data.frame(name, note), "colname.tsv",sep = "\t", row.names = TRUE, quote = FALSE)
 
 ## clean up folder
 file.remove(dataPath)
+file.remove("colname.tsv")
 unlink("data", recursive = TRUE)
