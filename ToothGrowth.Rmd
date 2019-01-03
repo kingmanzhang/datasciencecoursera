@@ -1,0 +1,92 @@
+---
+title: "Tooth Growth analysis"
+author: Xingmin Aaron Zhang
+output: pdf_document
+---
+
+In this project, we will investigate the ToothGrowth dataset in R. 
+
+First, we load this datset to our working directory.
+```{r}
+library(datasets)
+head(ToothGrowth)
+```
+
+We perform some exploratory analysis to get a better idea of what this dataset looks like. len is a numeric measurement. There are two supplements, VC and OJ, and three doeses, 0.5, 1 and 2. 
+```{r}
+ToothGrowth$dose = as.factor(ToothGrowth$dose)
+str(ToothGrowth)
+```
+
+We also look at what combinations of supplements and doses were used in this experiment. Each supplement was used at three doses, 0.5, 1 and 2, so there were a total of 6 conditions.
+```{r}
+library(dplyr)
+ToothGrowth %>% select(supp, dose) %>% distinct()
+```
+
+We use histograms to show how does length changes with supplement, dose, or the combination.
+```{r fig.align="center", fig.width=4, fig.height=3, fig.cap="Figure 1 The lengh of tooth growth in response to different supplements at increasing doses"}
+library(ggplot2)
+library(gridExtra)
+p1 <- ggplot(ToothGrowth) + geom_boxplot(aes(x = supp, y = len))
+p2 <- ggplot(ToothGrowth) + geom_boxplot(aes(x = dose, y = len))
+p3 <- ggplot(ToothGrowth) + geom_boxplot(aes(x = interaction(dose, supp), y = len))
+p4 <- ggplot(ToothGrowth) + geom_histogram(aes(x = interaction(dose, supp)), stat = "count")
+grid.arrange(p1, p2, p3, p4, ncol = 2, layout_matrix = rbind(c(1, 2), c(3, 3), c(4,4)))
+```
+
+From the above analysis, we can summarize our findings as follows:
+1. There are two suppelements, OJ and VC, and three doses, 0.5, 1 and 2.
+2. There are 6 combinations of treatments, each supplement was used at three doses. Each combination had 10 replicates.
+3. For different supplements, growth from OJ seems higher than VC.
+4. growth increased with increasing doses.
+
+We want to perform Student's T test to test whether tooth growth was significantly different in response to different supplements, or at different doses. First we fix the variable dose and only assess the effect of different supplements.
+```{r}
+s <- split(ToothGrowth$len, interaction(ToothGrowth$supp, ToothGrowth$dose)) 
+names(s)
+t.test(s$OJ.0.5, s$VC.0.5, paired = FALSE, alternative = "greater")
+```
+Result: The p value for observing such a t statistic or more extreme is only 0.003. So under 95% confidence we reject NULL hypothesis and accept alternative. 
+
+```{r}
+t.test(s$OJ.1, s$VC.1, paired = FALSE, alternative = "greater")
+```
+Result: The t statistic is in the 95 percent rejection interval (one-sided, actual p < 0.01). So reject NULL hypothesis and accept alternative. 
+
+
+```{r}
+t.test(s$OJ.2, s$VC.2, paired = FALSE, alternative = "two.sided")
+```
+Result: The t statistic is not in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
+
+Next, we perform T test to test the effect of doses on tooth growth.
+```{r}
+t.test(s$OJ.0.5, s$OJ.1, alternative = "less", paired = FALSE)
+```
+Result: ?
+
+```{r}
+t.test(s$OJ.1, s$OJ.2, alternative = "less", paired = FALSE)
+```
+Result: The t statistic is in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
+
+```{r}
+t.test(s$OJ.0.5, s$OJ.2, alternative = "less", paired = FALSE)
+```
+Result: The t statistic is not in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
+
+```{r}
+t.test(s$VC.0.5, s$VC.1, alternative = "less", paired = FALSE)
+```
+Result: The t statistic is not in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
+
+```{r}
+t.test(s$VC.1, s$VC.2, alternative = "less", paired = FALSE)
+```
+Result: The t statistic is not in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
+
+```{r}
+t.test(s$VC.0.5, s$VC.2, alternative = "less", paired = FALSE)
+```
+Result: The t statistic is not in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 

@@ -16,9 +16,9 @@ expMatrix <- matrix(rexp(n * N, rate = lambda), nrow = N, byrow = TRUE )
 ```
 
 We calculate the mean of these 1000 samples, and create a histogram to show the distribution.
-```{r fig.align="center", fig.width=4, fig.height=4}
+```{r fig.align="center", fig.width=4, fig.height=4, fig.cap="Figure 1 Distribution of means of 1000 simulations"}
 expMean <- rowMeans(expMatrix)
-{ hist(expMean, xlab = "mean of 40 exponentials", ylab = "count", 
+{ hist(expMean, xlab = "sample mean (n = 40)", ylab = "count", 
       main = "histogram of means of exponentials")
   abline(v = mean(expMean), col = "royalblue", lwd = 3)
   text(x = 5, y = 160, labels = paste("mean = ", round(mean(expMean), 2)), pos = 4, 
@@ -34,15 +34,15 @@ rownames(meanAndSd) = c("mean", "sd")
 meanAndSd
 ```
 
-For the theoretical normal distribution, if we sample 1000 values, the 95% confidence interval will be [`r mu + qnorm(0.025) * sd/sqrt(1000)` ~ `r mu + qnorm(0.975) * sd/sqrt(1000)`]. Therefore, the observed mean is in this interval, i.e. we accept null hypothesis. 
+We can make inference about population mean from the simulations, the 95% confidence interval is be [`r round(mean(expMean) + qnorm(0.025) * sd(expMean), 2)` ~ `r round(mean(expMean) + qnorm(0.975) * sd(expMean), 2)`]. Clearly, the theoretical mean (u = 5) is within this interval. 
 
 
 We can also fit the above histogram with a normal distribution curve and found that they match very well (left). The right side shows the distribution of original values for the simulations. One can see that while the original values follow the exponential distribution, the mean of samples follow normal distribution. 
 
-```{r fig.width=9, fig.height=5, fig.align='center'}
+```{r fig.width=9, fig.height=5, fig.align='center', fig.cap="Figure 2 Distribution of sample means (left) and raw values of samples (right)"}
 par(mfrow = c(1, 2))
 { hist(expMean, xlab = "mean of samples (n = 40)", ylab = "fraction", 
-      main = "distribution of means of samples", freq = FALSE)
+      main = "sample mean (n = 40)", freq = FALSE)
   abline(v = mean(expMean), col = "royalblue", lwd = 3)
   text(x = 6, y = 0.3, labels = "theoretical\nnormal\ncurve", pos = 4, col = "red")
   x <- seq(2, 8, by = 0.2)
@@ -51,7 +51,8 @@ par(mfrow = c(1, 2))
 
 {
     rawNum <- as.vector(expMatrix)
-    hist(rawNum, freq = FALSE, main = "distribution of raw values in simulation")
+    hist(rawNum, freq = FALSE, main = "distribution of raw values in simulation", 
+         xlab = "raw values of samples")
     x <- seq(min(rawNum), max(rawNum), by = 0.2)
     curve(dexp(x, rate = lambda), add = TRUE, col = "red", lwd = 2)
     text(x = 6, y = 0.08, labels = "theoretical exponential\ncurve", pos = 4, col = "red")
