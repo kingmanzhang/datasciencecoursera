@@ -4,102 +4,75 @@ author: Xingmin Aaron Zhang
 output: pdf_document
 ---
 
-In this project, we will investigate the ToothGrowth dataset in R. 
+In this project, we will investigate the ToothGrowth dataset in R. The dataset was conducted in 60 guinea pigs. Each animal received one of three dose levels of vitamin C by one of two delivery methods, orange juice (OJ) or ascorbic acid (VC). The lengh of odontoblasts are measured as an indicator of tooth growth. 
 
+## Load Data and Exploratory analysis
 First, we load this datset to our working directory.
 ```{r}
 library(datasets)
-head(ToothGrowth)
-```
-
-We perform some exploratory analysis to get a better idea of what this dataset looks like. len is a numeric measurement. There are two supplements, VC and OJ, and three doeses, 0.5, 1 and 2. 
-```{r}
 ToothGrowth$dose = as.factor(ToothGrowth$dose)
 str(ToothGrowth)
 ```
 
-We also look at what combinations of supplements and doses were used in this experiment. Each supplement was used at three doses, 0.5, 1 and 2, so there were a total of 6 conditions.
-```{r warning=FALSE}
+There are two values in supp column (OJ and VC) and three dose levels (0.5, 1, 2). Their combinations produced 6 experimental groups, with each group having 10 subjects.
+```{r message=FALSE}
 library(dplyr)
-ToothGrowth %>% select(supp, dose) %>% distinct()
+ToothGrowth %>% group_by(supp, dose) %>% summarize(n = n())
 ```
 
 We use histograms to show how does length changes with supplement, dose, or the combination.
-```{r fig.align="center", fig.width=4, fig.height=3, fig.cap="Figure 1 The lengh of tooth growth in response to different supplements at increasing doses"}
+```{r fig.align="center", fig.width=4, fig.height=3, fig.cap="Figure 1 The lengh of tooth growth in response to different supplements at increasing doses", message=FALSE}
 library(ggplot2)
 library(gridExtra)
-p1 <- ggplot(ToothGrowth) + geom_boxplot(aes(x = supp, y = len))
-p2 <- ggplot(ToothGrowth) + geom_boxplot(aes(x = dose, y = len))
-p3 <- ggplot(ToothGrowth) + geom_boxplot(aes(x = interaction(dose, supp), y = len))
-p4 <- ggplot(ToothGrowth) + geom_histogram(aes(x = interaction(dose, supp)), stat = "count")
-grid.arrange(p1, p2, p3, p4, ncol = 2, layout_matrix = rbind(c(1, 2), c(3, 3), c(4,4)))
+p <- ggplot(ToothGrowth)
+p1 <- p + geom_boxplot(aes(x = supp, y = len))
+p2 <- p + geom_boxplot(aes(x = dose, y = len))
+p3 <- p + geom_boxplot(aes(x = interaction(dose, supp), y = len)) + 
+    xlab("experimental group")
+grid.arrange(p1, p2, p3,ncol = 2, layout_matrix = rbind(c(1, 2), c(3, 3)))
 ```
 
 From the above analysis, we can summarize our findings as follows:
 1. There are two suppelements, OJ and VC, and three doses, 0.5, 1 and 2.
 2. There are 6 combinations of treatments, each supplement was used at three doses. Each combination had 10 replicates.
-3. For different supplements, growth from OJ seems higher than VC.
-4. growth increased with increasing doses.
+3. For different supplements, odontoblast lengh with OJ seems higher than VC.
+4. odontoblasts length increased with increasing doses.
 
-We want to perform Student's T test to test whether tooth growth was significantly different in response to different supplements, or at different doses. First we fix the variable dose and only assess the effect of different supplements.
+## Statistical analysis
+We want to perform Student's T test to test whether odontoblasts length was significantly different between each experimental group. In particular, we hope to test whether odontoblasts lengh is significantly higher when taken orange juice than ascorbic acid at each dose level, and whether growth is significantly higher at higher doses. 
 ```{r}
+ToothGrowth$supp <- relevel(ToothGrowth$supp, "VC")
 s <- split(ToothGrowth$len, interaction(ToothGrowth$supp, ToothGrowth$dose)) 
-names(s)
-t.test(s$OJ.0.5, s$VC.0.5, paired = FALSE, alternative = "greater")
-```
-Result: The p value for observing such a t statistic or more extreme is only 0.003. So under 95% confidence we reject NULL hypothesis and accept alternative. 
 
-```{r}
-t.test(s$OJ.1, s$VC.1, paired = FALSE, alternative = "greater")
-```
-Result: The t statistic is in the 95 percent rejection interval (one-sided, actual p < 0.01). So reject NULL hypothesis and accept alternative. 
-
-
-```{r}
-t.test(s$OJ.2, s$VC.2, paired = FALSE, alternative = "two.sided")
-```
-Result: The t statistic is not in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
-
-Next, we perform T test to test the effect of doses on tooth growth.
-```{r}
-t.test(s$OJ.0.5, s$OJ.1, alternative = "less", paired = FALSE)
-```
-Result: ?
-
-```{r}
-t.test(s$OJ.1, s$OJ.2, alternative = "less", paired = FALSE)
-```
-Result: The t statistic is in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
-
-```{r}
-t.test(s$OJ.0.5, s$OJ.2, alternative = "less", paired = FALSE)
-```
-Result: The t statistic is not in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
-
-```{r}
-t.test(s$VC.0.5, s$VC.1, alternative = "less", paired = FALSE)
-```
-Result: The t statistic is not in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
-
-```{r}
-t.test(s$VC.1, s$VC.2, alternative = "less", paired = FALSE)
-```
-Result: The t statistic is not in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
-
-```{r}
-t.test(s$VC.0.5, s$VC.2, alternative = "less", paired = FALSE)
-```
-Result: The t statistic is not in the 95 percent confidence interval (two-sided, actual p < 0.01). So accept NULL hypothesis. 
-
-```{r}
 t.test.p <- function(x, ...) {
   result = t.test(x, ...)
   result$p.value
 }
 
-p_matrix <-sapply(s, function(x) sapply(s, function(y) t.test.p(x, y)))
-alpha = 0.05
-result_matrix <- ifelse(p_matrix < alpha / 36, p_matrix, " ")
+p_matrix <-sapply(s, function(x) sapply(s, function(y) t.test.p(y, x, alternative = "less")))
+p_matrix[lower.tri(p_matrix, diag = TRUE)] <- NA
+print(formatC(p_matrix, format = "e", digits = 2), quote = FALSE)
+```
+
+Because we are doing multiple t test, we hope to control false discovery rate by Bonferroni correction. We performed 15 t tests (after removing duplicates, i.e. t tests between a and b, or b and a, are considerate duplicates). Here we set false discovery rate 10%
+```{r}
+alpha = 0.10
+result_matrix <- ifelse(is.na(p_matrix), "-", 
+                        ifelse(p_matrix < alpha / 15, 
+                               formatC(p_matrix, format = "e", digit = 2), "NS"))
+rownames(result_matrix) <- c("VC 0.5", "OJ 0.5", "VC 1", "OJ 1", "VC 2", "OJ 2")
+colnames(result_matrix) <- c("VC 0.5", "OJ 0.5", "VC 1", "OJ 1", "VC 2", "OJ 2")
 print(result_matrix, quote = FALSE)
 ```
+
+## Conclusions
+Assume that the samples are representative of each experimental group,  follow normal distributions and that have same variations, we can conclude at 10% false discovery rate that:
+
+1. at dose level 0.5, orange juice was significantly better at promoting tooth growth.
+2. at dose level 1, orange juice was significantly better at promoting tooth growth.
+3. at dose level 2, orange juice was no better than ascorbic acid in promoting tooth growth.
+4. for ascorbic acid, increasing from dose 0.5 to 1, or from 1 to 2, increased tooth growth. 
+5. for orange juice, increasing from dose 0.5 to 1 increased tooth growth, but increasing from 1 to 2 did not. 
+
+All above considered, orange juice at dose 1 seems to be the best choice (lowest dose level with highest effect) in promoting tooth growth.
 

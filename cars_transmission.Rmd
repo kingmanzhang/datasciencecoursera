@@ -1,0 +1,73 @@
+---
+title: "Car Transmission on Fuel Efficiency"
+author: Xingmin Aaron Zhang
+output: pdf_document
+---
+
+Our goal for this report is to explore the effect of car transmission, manual or automatic, on fuel efficiency measurement by miles per gallon. We will use the mtcars dataset in R for this project.
+
+
+## Load Data and Exploratory analysis
+
+The dataset has 11 variables and 32 observations. By default, all variables are considered numeric. We correct some into factors, including cyl, vs, am, gear and carb. 
+```{r}
+attach(mtcars)
+mtcars$cyl = as.factor(mtcars$cyl)
+mtcars$vs = as.factor(mtcars$vs)
+mtcars$am = as.factor(mtcars$am)
+mtcars$gear = as.factor(mtcars$gear)
+mtcars$carb = as.factor(mtcars$carb)
+str(mtcars)
+```
+
+ We plot mpg against transmission to develop an initial impression.
+```{r message=FALSE, fig.align='center', fig.width=4,fig.height=4}
+library(ggplot2)
+ggplot(mtcars) + geom_violin(aes(x = factor(am), y = mpg, fill = factor(am)), draw_quantiles = c(0.5)) + 
+    scale_fill_discrete(breaks = c(0, 1), labels = c("automatic", "manual")) + 
+    xlab("") + scale_x_discrete(breaks = c(0, 1), labels = c("automatic", "manual")) + 
+    theme(legend.position = "none")
+```
+
+We create pairwise plot to look at the relationship between each variables.
+```{r}
+pairs(mtcars[,-1], gap = 0, pch = ".", cex = 5, main ="mtcars: regressor correlation")
+```
+The plot shows there are some variables, such as disp ~ hp, disp ~ wt and drat ~ wt, that show high correlation. We should pay attention to those variables as all might not be required in our linear prediction model.
+
+## Statistical Analysis
+We hope to find the relationship between mpg and transmission. Our first model is simply a linear relationship between mpg and transmission.
+```{r}
+fit1 <- lm(mpg ~ am, data = mtcars)
+summary(fit1)$coefficients
+```
+
+Obviously, fuel efficiency is not only dependent on transmission type. So we need to include more parameters to our linear model. We will add one more parameter a time and perform a 
+
+```{r}
+fit2 <- update(fit1, mpg ~ am + cyl)
+
+```
+
+```{r}
+fit <- lm(mpg ~ ., data = mtcars)
+library(car)
+sqrt(vif(fit))
+```
+
+
+Did the student interpret the coefficients correctly?
+Did the student do some exploratory data analyses?
+Did the student fit multiple models and detail their strategy for model selection?
+Did the student answer the questions of interest or detail why the question(s) is (are) not answerable?
+Did the student do a residual plot and some diagnostics?
+Did the student quantify the uncertainty in their conclusions and/or perform an inference correctly?
+Was the report brief (about 2 pages long) for the main body of the report and no longer than 5 with supporting appendix of figures?
+Did the report include an executive summary?
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
