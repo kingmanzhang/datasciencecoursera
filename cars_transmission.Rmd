@@ -12,6 +12,8 @@ Our goal for this report is to explore the effect of car transmission, manual or
 The dataset has 11 variables and 32 observations. By default, all variables are considered numeric. We correct some into factors, including cyl, vs, am, gear and carb. 
 ```{r}
 attach(mtcars)
+cormatrix <- outer(mtcars, mtcars, Vectorize(cor))
+heatmap(cormatrix)
 mtcars$cyl = as.factor(mtcars$cyl)
 mtcars$vs = as.factor(mtcars$vs)
 mtcars$am = as.factor(mtcars$am)
@@ -54,6 +56,12 @@ fit2 <- update(fit1, mpg ~ am + cyl)
 ```{r}
 fit <- lm(mpg ~ ., data = mtcars)
 library(car)
+sqrt(vif(fit))
+```
+
+remove disp and hp. The VIF now looks much better.
+```{r}
+fit <- lm(mpg ~ ., data = mtcars[,-c(2,3)])
 sqrt(vif(fit))
 ```
 
