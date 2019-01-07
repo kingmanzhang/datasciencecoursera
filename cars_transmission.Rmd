@@ -31,8 +31,10 @@ ggplot(mtcars) + geom_violin(aes(x = factor(am), y = mpg, fill = factor(am)), dr
 
 We create pairwise plot to look at the relationship between each variables.
 ```{r}
-pairs(mtcars[,-1], gap = 0, pch = ".", cex = 5, main ="mtcars: regressor correlation")
+pairs(mtcars[,-1], gap = 0, pch = ".", cex = 5,  lower.panel = NULL,
+      main ="mtcars: regressor correlation")
 ```
+
 The plot shows there are some variables, such as disp ~ hp, disp ~ wt and drat ~ wt, that show high correlation. We should pay attention to those variables as all might not be required in our linear prediction model.
 
 ## Statistical Analysis
