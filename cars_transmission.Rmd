@@ -6,24 +6,20 @@ output: pdf_document
 
 Our goal for this report is to explore the effect of car transmission, manual or automatic, on fuel efficiency measurement by miles per gallon. We will use the mtcars dataset in R for this project.
 
-
 ## Load Data and Exploratory analysis
 
 The dataset has 11 variables and 32 observations. By default, all variables are considered numeric. We correct some into factors, including cyl, vs, am, gear and carb. 
-```{r}
+```{r message=FALSE}
 attach(mtcars)
-cormatrix <- outer(mtcars, mtcars, Vectorize(cor))
-heatmap(cormatrix)
 mtcars$cyl = as.factor(mtcars$cyl)
 mtcars$vs = as.factor(mtcars$vs)
 mtcars$am = as.factor(mtcars$am)
 mtcars$gear = as.factor(mtcars$gear)
 mtcars$carb = as.factor(mtcars$carb)
-str(mtcars)
 ```
 
- We plot mpg against transmission to develop an initial impression.
-```{r message=FALSE, fig.align='center', fig.width=4,fig.height=4}
+We plot mpg against transmission to develop an initial impression.
+```{r message=FALSE, fig.align='center', fig.width=2,fig.height=2}
 library(ggplot2)
 ggplot(mtcars) + geom_violin(aes(x = factor(am), y = mpg, fill = factor(am)), draw_quantiles = c(0.5)) + 
     scale_fill_discrete(breaks = c(0, 1), labels = c("automatic", "manual")) + 
@@ -33,25 +29,27 @@ ggplot(mtcars) + geom_violin(aes(x = factor(am), y = mpg, fill = factor(am)), dr
 
 We create pairwise plot to look at the relationship between each variables.
 ```{r}
-pairs(mtcars[,-1], gap = 0, pch = ".", cex = 5,  lower.panel = NULL,
+# plot inspired by http://www.sthda.com/english/wiki/scatter-plot-matrices-r-base-graphs
+panel.cor <- function(x, y){
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- round(cor(as.numeric(x), as.numeric(y)), digits=2)
+    txt <- paste0("R = ", r)
+    cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+
+upper.panel<-function(x, y){
+  points(x,y, pch = 19, cex = 0.5)
+}
+pairs(mtcars[,-1], gap = 0.5, lower.panel = panel.cor, upper.panel = upper.panel,
       main ="mtcars: regressor correlation")
 ```
 
-The plot shows there are some variables, such as disp ~ hp, disp ~ wt and drat ~ wt, that show high correlation. We should pay attention to those variables as all might not be required in our linear prediction model.
+The plot shows there are some variables, such as cyl ~ disp, cyl ~ hp, cyl ~ wt, disp ~ hp, disp ~ wt and drat ~ wt, that show high correlation. We should pay attention to those variables as all might not be required in our linear prediction model.
 
 ## Statistical Analysis
-We hope to find the relationship between mpg and transmission. Our first model is simply a linear relationship between mpg and transmission.
-```{r}
-fit1 <- lm(mpg ~ am, data = mtcars)
-summary(fit1)$coefficients
-```
-
-Obviously, fuel efficiency is not only dependent on transmission type. So we need to include more parameters to our linear model. We will add one more parameter a time and perform a 
-
-```{r}
-fit2 <- update(fit1, mpg ~ am + cyl)
-
-```
+We hope to find the relationship between mpg and transmission. Our first model is simply a linear relationship between mpg and all variables. We perform a variance inflation factor analysis to check for linearly related variables. 
 
 ```{r}
 fit <- lm(mpg ~ ., data = mtcars)
@@ -59,12 +57,52 @@ library(car)
 sqrt(vif(fit))
 ```
 
-remove disp and hp. The VIF now looks much better.
+As expected from the exploratory analysis, disp, hp and wt have high VIF due to their correlation. Therefore, we remove them one by one and check the VIF of remain variables. We found that after removing both hp and disp, the VIFs look better.  
+
 ```{r}
-fit <- lm(mpg ~ ., data = mtcars[,-c(2,3)])
-sqrt(vif(fit))
+variables <- colnames(mtcars)
+fit2 <- lm(mpg ~ ., data = mtcars[,variables != "hp"])
+sqrt(vif(fit2))
+fit3 <- lm(mpg ~ ., data = mtcars[,variables != "hp" & variables != "disp"])
+sqrt(vif(fit3))
 ```
 
+In the next step, we build nested models with the remaining variables and check whether adding each variables improves prediction.
+
+```{r}
+mtcars_subset <- mtcars[,variables != "hp" & variables != "disp"]
+model1 <- lm(mpg ~ am, data = mtcars_subset)
+model2 <- update(model1, mpg ~ am + cyl)
+model3 <- update(model2, mpg ~ am + cyl + drat)
+model4 <- update(model3, mpg ~ am + cyl + drat + wt)
+model5 <- update(model4, mpg ~ am + cyl + drat + wt + qsec)
+model6 <- update(model5, mpg ~ am + cyl + drat + wt + qsec + vs)
+model7 <- update(model6, mpg ~ am + cyl + drat + wt + qsec + vs + gear)
+model8 <- update(model7, mpg ~ am + cyl + drat + wt + qsec + vs + gear + carb)
+anova(model1, model2, model3, model4, model5, model6, model7, model8)
+```
+
+So it appears we should include am, cyl and wt in our final model. Add interactions among them did not improve residue reduction, so we choose the model without interactions.  
+```{r}
+model <- lm(mpg ~ am + cyl + wt, data = mtcars_subset)
+model_int <- update(model, mpg ~ am * cyl * wt )
+anova(model, model_int)
+```
+
+We check residules for this model. They look randomly spreaded, indicating that our linear model is fine. 
+```{r}
+residues <- resid(model)
+plot(residues ~ mtcars_subset$mpg, xlab = "mpg")
+abline(h = 0, col = "red")
+```
+
+We check the coefficients of our final model. The transmission type variable, am, has a coefficient of 0.15, but its variance is so large that it did not pass the t test (p value = 0.91). Instead, increasing the number of cylinders or weight, significantly reduce fuel efficiency. Therefore, we can conclude with high confidence (99%) that the type of transmission did not significantly affect fuel efficiency.  
+```{r}
+summary(model)$coefficients
+```
+
+## Conclusion
+We conclude that fuel efficiency is not significantly impacted by the type of transmissions.
 
 Did the student interpret the coefficients correctly?
 Did the student do some exploratory data analyses?
@@ -74,10 +112,4 @@ Did the student do a residual plot and some diagnostics?
 Did the student quantify the uncertainty in their conclusions and/or perform an inference correctly?
 Was the report brief (about 2 pages long) for the main body of the report and no longer than 5 with supporting appendix of figures?
 Did the report include an executive summary?
-
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
-
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
-
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
 
