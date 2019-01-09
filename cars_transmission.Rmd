@@ -4,12 +4,13 @@ author: Xingmin Aaron Zhang
 output: pdf_document
 ---
 
-Our goal for this report is to explore the effect of car transmission, manual or automatic, on fuel efficiency measurement by miles per gallon. We will use the mtcars dataset in R for this project.
+Our goal for this report is to explore the effect of car transmission, manual or automatic, on fuel efficiency measurement by miles per gallon. We used the mtcars dataset in R for this project.
 
 ## Load Data and Exploratory analysis
 
-The dataset has 11 variables and 32 observations. By default, all variables are considered numeric. We correct some into factors, including cyl, vs, am, gear and carb. 
-```{r message=FALSE}
+The dataset has 11 variables and 32 observations. By default, all variables are considered numeric. We corrected some into factors, including cyl, vs, am, gear and carb. When we plot fuel efficiency by the type of transmission (Figure 1 Left), we found that the mpg appears higher for manual transmissions. Therefore, one may hypothesize that cars with manual transmission have higher fuel efficiency.
+
+```{r message=FALSE, echo=FALSE}
 attach(mtcars)
 mtcars$cyl = as.factor(mtcars$cyl)
 mtcars$vs = as.factor(mtcars$vs)
@@ -18,17 +19,17 @@ mtcars$gear = as.factor(mtcars$gear)
 mtcars$carb = as.factor(mtcars$carb)
 ```
 
-We plot mpg against transmission to develop an initial impression.
-```{r message=FALSE, fig.align='center', fig.width=2,fig.height=2}
+
+```{r message=FALSE, fig.align='center', fig.width=2,fig.height=2, echo = FALSE}
 library(ggplot2)
-ggplot(mtcars) + geom_violin(aes(x = factor(am), y = mpg, fill = factor(am)), draw_quantiles = c(0.5)) + 
+p1 <- ggplot(mtcars) + geom_violin(aes(x = factor(am), y = mpg, fill = factor(am)), draw_quantiles = c(0.5)) + 
     scale_fill_discrete(breaks = c(0, 1), labels = c("automatic", "manual")) + 
     xlab("") + scale_x_discrete(breaks = c(0, 1), labels = c("automatic", "manual")) + 
     theme(legend.position = "none")
 ```
 
-We create pairwise plot to look at the relationship between each variables.
-```{r}
+Before we used the variables for building models, we looked at their correlations (Supplement Figure 1). We could identify several variables that have high correlation. Therefore, we decided to use variable inflication factors (VIF) to remove highly correlated variables. 
+```{r fig.align='center', fig.width=6, fig.height=6, fig.cap="correlation matrix", include=FALSE}
 # plot inspired by http://www.sthda.com/english/wiki/scatter-plot-matrices-r-base-graphs
 panel.cor <- function(x, y){
     usr <- par("usr"); on.exit(par(usr))
@@ -46,30 +47,27 @@ pairs(mtcars[,-1], gap = 0.5, lower.panel = panel.cor, upper.panel = upper.panel
       main ="mtcars: regressor correlation")
 ```
 
-The plot shows there are some variables, such as cyl ~ disp, cyl ~ hp, cyl ~ wt, disp ~ hp, disp ~ wt and drat ~ wt, that show high correlation. We should pay attention to those variables as all might not be required in our linear prediction model.
-
 ## Statistical Analysis
-We hope to find the relationship between mpg and transmission. Our first model is simply a linear relationship between mpg and all variables. We perform a variance inflation factor analysis to check for linearly related variables. 
+Our first model is simply a linear relationship between mpg and all variables. As expected, disp, hp and wt have high VIF due to their correlation. Therefore, we remove them one by one and found that after removing both hp and disp, the VIFs look better (Supplement).  
 
-```{r}
+```{r message=FALSE}
 fit <- lm(mpg ~ ., data = mtcars)
 library(car)
 sqrt(vif(fit))
 ```
 
-As expected from the exploratory analysis, disp, hp and wt have high VIF due to their correlation. Therefore, we remove them one by one and check the VIF of remain variables. We found that after removing both hp and disp, the VIFs look better.  
 
-```{r}
+
+```{r echo=FALSE, include=FALSE}
 variables <- colnames(mtcars)
 fit2 <- lm(mpg ~ ., data = mtcars[,variables != "hp"])
-sqrt(vif(fit2))
 fit3 <- lm(mpg ~ ., data = mtcars[,variables != "hp" & variables != "disp"])
 sqrt(vif(fit3))
 ```
 
-In the next step, we build nested models with the remaining variables and check whether adding each variables improves prediction.
+In the next step, we built nested models with the remaining variables and checked whether adding each variables improved prediction. We found that only am, cyl and wt did. Add interactions among them did not improve residue reduction, so we chose to build the model with am, cyl and wt without interaction terms. 
 
-```{r}
+```{r echo=FALSE}
 mtcars_subset <- mtcars[,variables != "hp" & variables != "disp"]
 model1 <- lm(mpg ~ am, data = mtcars_subset)
 model2 <- update(model1, mpg ~ am + cyl)
@@ -82,34 +80,28 @@ model8 <- update(model7, mpg ~ am + cyl + drat + wt + qsec + vs + gear + carb)
 anova(model1, model2, model3, model4, model5, model6, model7, model8)
 ```
 
-So it appears we should include am, cyl and wt in our final model. Add interactions among them did not improve residue reduction, so we choose the model without interactions.  
+Final linear model is shown below. The residues from this model spreaded randomly, suggesting that the model is working fine (Figure 1 Right).
 ```{r}
 model <- lm(mpg ~ am + cyl + wt, data = mtcars_subset)
+```
+
+```{r echo=FALSE, include=FALSE}
 model_int <- update(model, mpg ~ am * cyl * wt )
 anova(model, model_int)
 ```
 
-We check residules for this model. They look randomly spreaded, indicating that our linear model is fine. 
-```{r}
-residues <- resid(model)
-plot(residues ~ mtcars_subset$mpg, xlab = "mpg")
-abline(h = 0, col = "red")
+```{r echo=FALSE, fig.align='center', fig.height=2, fig.width=8, fig.cap="Left: fuel efficiency changes with transmission types; Right: residues of final linear model", message=FALSE}
+d <- data.frame(residues = resid(model), fitted = fitted.values(model))
+p2 <- ggplot(d, aes(x = fitted, y = residues)) + geom_point() + geom_hline(yintercept = 0, color = "red")
+require(gridExtra)
+grid.arrange(p1, p2, ncol = 2, widths = c(2, 6))
 ```
 
-We check the coefficients of our final model. The transmission type variable, am, has a coefficient of 0.15, but its variance is so large that it did not pass the t test (p value = 0.91). Instead, increasing the number of cylinders or weight, significantly reduce fuel efficiency. Therefore, we can conclude with high confidence (99%) that the type of transmission did not significantly affect fuel efficiency.  
+The transmission type variable, am, has a coefficient of 0.15, but its variance is so large that it did not pass the t test (p value = 0.91). Rather, increasing the number of cylinders or weight, significantly reduce fuel efficiency. Therefore, we can conclude with high confidence (99%) that the type of transmission did not significantly affect fuel efficiency. 
+
 ```{r}
 summary(model)$coefficients
 ```
 
 ## Conclusion
-We conclude that fuel efficiency is not significantly impacted by the type of transmissions.
-
-Did the student interpret the coefficients correctly?
-Did the student do some exploratory data analyses?
-Did the student fit multiple models and detail their strategy for model selection?
-Did the student answer the questions of interest or detail why the question(s) is (are) not answerable?
-Did the student do a residual plot and some diagnostics?
-Did the student quantify the uncertainty in their conclusions and/or perform an inference correctly?
-Was the report brief (about 2 pages long) for the main body of the report and no longer than 5 with supporting appendix of figures?
-Did the report include an executive summary?
-
+We conclude that fuel efficiency is not significantly impacted by the type of transmissions based on the mtcars dataset.

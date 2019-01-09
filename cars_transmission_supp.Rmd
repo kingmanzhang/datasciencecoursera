@@ -1,0 +1,82 @@
+
+---
+title: "Supplement code and figures"
+author: Xingmin Aaron Zhang
+output: pdf_document
+---
+
+Factorize some variables
+```{r message=FALSE}
+attach(mtcars)
+mtcars$cyl = as.factor(mtcars$cyl)
+mtcars$vs = as.factor(mtcars$vs)
+mtcars$am = as.factor(mtcars$am)
+mtcars$gear = as.factor(mtcars$gear)
+mtcars$carb = as.factor(mtcars$carb)
+```
+
+We create pairwise plot to look at the relationship between each variables.
+```{r fig.align='center', fig.width=6, fig.height=6, fig.cap="correlation matrix"}
+# plot inspired by http://www.sthda.com/english/wiki/scatter-plot-matrices-r-base-graphs
+panel.cor <- function(x, y){
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- round(cor(as.numeric(x), as.numeric(y)), digits=2)
+    txt <- paste0("R = ", r)
+    cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+
+upper.panel<-function(x, y){
+  points(x,y, pch = 19, cex = 0.5)
+}
+pairs(mtcars[,-1], gap = 0.5, lower.panel = panel.cor, upper.panel = upper.panel,
+      main ="mtcars: regressor correlation")
+```
+
+
+VIF of all variables
+```{r}
+fit <- lm(mpg ~ ., data = mtcars)
+library(car)
+sqrt(vif(fit))
+```
+
+VIF after removing hp
+
+```{r}
+variables <- colnames(mtcars)
+fit2 <- lm(mpg ~ ., data = mtcars[,variables != "hp"])
+sqrt(vif(fit2))
+```
+
+VIF after removing both hp and disp
+```{r}
+fit3 <- lm(mpg ~ ., data = mtcars[,variables != "hp" & variables != "disp"])
+sqrt(vif(fit3))
+```
+
+Build linear models and check the significance of residue reduction by adding one variable a time.
+
+```{r}
+mtcars_subset <- mtcars[,variables != "hp" & variables != "disp"]
+model1 <- lm(mpg ~ am, data = mtcars_subset)
+model2 <- update(model1, mpg ~ am + cyl)
+model3 <- update(model2, mpg ~ am + cyl + drat)
+model4 <- update(model3, mpg ~ am + cyl + drat + wt)
+model5 <- update(model4, mpg ~ am + cyl + drat + wt + qsec)
+model6 <- update(model5, mpg ~ am + cyl + drat + wt + qsec + vs)
+model7 <- update(model6, mpg ~ am + cyl + drat + wt + qsec + vs + gear)
+model8 <- update(model7, mpg ~ am + cyl + drat + wt + qsec + vs + gear + carb)
+anova(model1, model2, model3, model4, model5, model6, model7, model8)
+```
+
+Comparison of final linear model with and without interation terms.  
+```{r}
+model <- lm(mpg ~ am + cyl + wt, data = mtcars_subset)
+model_int <- update(model, mpg ~ am * cyl * wt )
+anova(model, model_int)
+```
+
+
+
