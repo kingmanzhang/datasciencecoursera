@@ -1,0 +1,133 @@
+---
+title: "Barbell Lifts Correctness Prediction"
+author: "Xingmin Aaron Zhang"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Introduction
+The goal of this study is to explore how to predict whether an individual performs barbell lifts correctly from wearable tracking devices.
+
+## Load data
+The data is generously provided by [Web.archive.org](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har). In this dataset, 6 participants performed barbell lifts correctly and incorrectly in 5 different ways: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+```{r}
+trainingurl <- url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+testingurl <-url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+
+training <- read.csv(trainingurl)
+testing <- read.csv(testingurl)
+```
+
+## Exploratory analysis
+We noticed that some columns are summary data while the rest are raw data. We used the summary data for building prediction models. The new_window column indicates a new observation.  
+```{r message=FALSE}
+library(tidyverse)
+missingCount <- sapply(training, function(x) { sum(is.na(x) | x == "")})
+s <- split(missingCount, as.factor(missingCount))
+d <- lapply(s, length)
+d
+```
+We can see that `r d[[1]][1]` variables have no missing values, while the rest `r d[[2]][1]` variables, which are summary data, have a lot missing values. We use this fact to extract raw data for building predictive models.
+
+```{r}
+rawVars <- names(missingCount[missingCount== 0])
+rawVars <- rawVars[-seq(1, 7)]
+
+training_raw <- training %>% select(c(rawVars, "classe"))
+testing_raw <- testing %>% select(rawVars[-length(rawVars)])
+```
+
+
+## Building Prediction Models
+We partition the training data into two subsets, one for actual training and the other for testing the models. In the final step, we will use the models to predict the unknown cases in testing sets. 
+```{r message=FALSE}
+library(caret)
+require(doSNOW)
+train_index <- createDataPartition(training_raw$classe, p = 0.7, list = FALSE)
+train_raw_train <- training_raw[train_index, ]
+train_raw_test <- training_raw[-train_index, ]
+```
+
+There are a lot of independent variables in this dataset. We probably do not need all of them, so we performed a simple random forest to identify important features. Based on the importance, we selected the first 36 varialbes in the figure below.
+```{r fig.width=8, fig.height=12, cache=TRUE, fig.cap="Figure 1. feature importance", fig.align='center'}
+library(randomForest)
+rf <- randomForest(classe ~ ., data = train_raw_train[,-1])
+featureImportance <- rf$importance
+names(featureImportance) <- row.names(featureImportance)
+featureImportance <- sort(featureImportance, decreasing = TRUE)
+varImpPlot(rf, type = 2, n.var = 52)
+
+featureSelect <- names(featureImportance[1:36])
+train_raw_train <- train_raw_train[,c(featureSelect, "classe")]
+train_raw_test <- train_raw_test[,c(featureSelect, "classe")]
+```
+
+We now build a few models to classify the classes. We performed a repeated cross validation (10 fold, 3 repeats) to compare models.
+
+First build a random foreast model. For this model, we do not need to worry too much about data preprocess. As the confusion matrix shows, we get fairly good accuracy. 
+```{r message=FALSE, warning=FALSE, cache=TRUE}
+set.seed(89375)
+train.control <- trainControl(method = "repeatedcv", number = 10, repeats = 3, search = "grid", classProbs = TRUE)
+c1 <- makeCluster(3, type = "SOCK")
+registerDoSNOW(c1)
+mtry = round(sqrt(length(featureSelect)),0)
+tunegrid <- expand.grid(mtry = mtry)
+rfmodel <- train(classe ~ ., data = train_raw_train[,-1], method = "rf", trControl = train.control, tuneGrid = tunegrid, ntree = 10)
+stopCluster(c1)
+
+rfPred <- predict(rfmodel, newdata = train_raw_test[,-1])
+cm <- confusionMatrix(rfPred, train_raw_test$classe)
+cm
+```
+
+We next build a tree classifier but with boosting ("xgbTree"). We ask We don't find this one better. The accuracy is actually lower.
+```{r cache=TRUE}
+set.seed(89375)
+c1 <- makeCluster(3, type = "SOCK")
+registerDoSNOW(c1)
+train.control <- trainControl(method = "repeatedcv", number = 10, repeats = 3, search = "random", classProbs = TRUE)
+gbmmodel <- train(classe ~ ., data = train_raw_train[,-1], method = "xgbTree", trControl = train.control, tuneLength = 10)
+stopCluster(c1)
+
+gbmPred <- predict(gbmmodel, newdata = train_raw_test[,-1])
+cm <- confusionMatrix(gbmPred, train_raw_test$classe)
+cm
+```
+
+
+Finally, we tried the ensemble method with 19 trees, and then use linear discriminate analysis to aggregate the predictions from individual tree models.
+
+```{r cache=TRUE}
+N_MODEL = 19
+bagged_models <- list()
+c1 <- makeCluster(3, type = "SOCK")
+registerDoSNOW(c1)
+for (i in 1:N_MODEL) {
+    print(paste(c("creating", i, "th model..."), sep = " "))
+    tunegrid <- expand.grid(mtry = 6)
+    new_sample <- sample(train_index, size = length(train_index), replace = TRUE)
+    train.control <- trainControl(method = "repeatedcv", number = 10, repeats = 3, search = "grid", classProbs = TRUE)
+    bagged_models[[i]] <- train(classe ~ ., data = train_raw_train[,-1], method = "rf", trControl = train.control, ntree = 10, tuneGrid = tunegrid )
+}
+ensemPred <- predict(bagged_models, newdata = train_raw_test[,-1])
+
+ensemDF <- as.data.frame(ensemPred)
+colnames(ensemDF) <- paste("pred", 1:N_MODEL, sep = "_")
+ensemDF$classe = train_raw_test$classe
+ensemRf <- train(classe ~ ., data = ensemDF, method = "lda")
+finalPred <- predict(ensemRf, newdata = ensemDF)
+stopCluster(c1)
+cm <- confusionMatrix(finalPred, train_raw_test$classe)
+cm
+```
+
+## Test on unknown testing set
+
+```{r}
+result <- predict(rfmodel, newdata = testing_raw[,c(featureSelect)])
+```
+
+## Conclusion
+
+We have built a random forest classifier that can detect whether a person is performing barbell lifting correctly with an accuracy of > 97%. When we used bagging method with multiple models, the accuracy is evener higher (>99%)
