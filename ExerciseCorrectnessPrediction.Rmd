@@ -50,9 +50,9 @@ train_raw_test <- training_raw[-train_index, ]
 ```
 
 There are a lot of independent variables in this dataset. We probably do not need all of them, so we performed a simple random forest to identify important features. Based on the importance, we selected the first 36 varialbes in the figure below.
-```{r fig.width=8, fig.height=12, cache=TRUE, fig.cap="Figure 1. feature importance", fig.align='center'}
+```{r fig.width=8, fig.height=12, cache=TRUE, fig.cap="Figure 1. feature importance", fig.align='center', message=FALSE}
 library(randomForest)
-rf <- randomForest(classe ~ ., data = train_raw_train[,-1])
+rf <- randomForest(classe ~ ., data = train_raw_train)
 featureImportance <- rf$importance
 names(featureImportance) <- row.names(featureImportance)
 featureImportance <- sort(featureImportance, decreasing = TRUE)
@@ -73,44 +73,54 @@ c1 <- makeCluster(3, type = "SOCK")
 registerDoSNOW(c1)
 mtry = round(sqrt(length(featureSelect)),0)
 tunegrid <- expand.grid(mtry = mtry)
-rfmodel <- train(classe ~ ., data = train_raw_train[,-1], method = "rf", trControl = train.control, tuneGrid = tunegrid, ntree = 10)
+rfmodel <- train(classe ~ ., data = train_raw_train, method = "rf", trControl = train.control, tuneGrid = tunegrid, ntree = 10)
 stopCluster(c1)
 
-rfPred <- predict(rfmodel, newdata = train_raw_test[,-1])
+rfPred <- predict(rfmodel, newdata = train_raw_test)
 cm <- confusionMatrix(rfPred, train_raw_test$classe)
 cm
 ```
 
-We next build a tree classifier but with boosting ("xgbTree"). We ask We don't find this one better. The accuracy is actually lower.
+We next build a tree classifier but with boosting ("xgbTree"). This algorithm appears to run very slowly, so we have to reduce the number of training data by a factor of 10. We found this one actually had lower accuracy. With the caveat of smaller training set in mind, we conclude that we do not need to do boosting. 
 ```{r cache=TRUE}
 set.seed(89375)
-c1 <- makeCluster(3, type = "SOCK")
+c1 <- makeCluster(1, type = "SOCK")
 registerDoSNOW(c1)
-train.control <- trainControl(method = "repeatedcv", number = 10, repeats = 3, search = "random", classProbs = TRUE)
-gbmmodel <- train(classe ~ ., data = train_raw_train[,-1], method = "xgbTree", trControl = train.control, tuneLength = 10)
+train.control <- trainControl(method = "repeatedcv", number = 10, repeats = 3, search = "grid", classProbs = TRUE)
+tune.grid <- expand.grid(
+    eta = c(0.4), 
+		nrounds = c(50), 
+		max_depth = c(5), 
+		gamma = 0, 
+		colsample_bytree = 0.8, 
+		min_child_weight = 1, 
+		subsample=1
+)
+reducedTrainIndex = sample(1:length(train_index), size = round(length(train_index)/10, 0), replace = FALSE)
+gbmmodel <- train(classe ~ ., data = train_raw_train[reducedTrainIndex, ], method = "xgbTree", trControl = train.control, tuneGrid = tune.grid)
 stopCluster(c1)
 
-gbmPred <- predict(gbmmodel, newdata = train_raw_test[,-1])
+gbmPred <- predict(gbmmodel, newdata = train_raw_test)
 cm <- confusionMatrix(gbmPred, train_raw_test$classe)
 cm
 ```
 
 
-Finally, we tried the ensemble method with 19 trees, and then use linear discriminate analysis to aggregate the predictions from individual tree models.
-
-```{r cache=TRUE}
+Finally, we tried the ensemble method with 19 trees, and then use linear discriminate analysis to aggregate the predictions from individual tree models. As you can see from the confusion matrix, the accuracy is even higher than using one random forest.
+```{r cache=TRUE, message=FALSE}
+set.seed(98465)
 N_MODEL = 19
 bagged_models <- list()
 c1 <- makeCluster(3, type = "SOCK")
 registerDoSNOW(c1)
 for (i in 1:N_MODEL) {
-    print(paste(c("creating", i, "th model..."), sep = " "))
+    message(sprintf("creating model %d...", i))
     tunegrid <- expand.grid(mtry = 6)
     new_sample <- sample(train_index, size = length(train_index), replace = TRUE)
     train.control <- trainControl(method = "repeatedcv", number = 10, repeats = 3, search = "grid", classProbs = TRUE)
-    bagged_models[[i]] <- train(classe ~ ., data = train_raw_train[,-1], method = "rf", trControl = train.control, ntree = 10, tuneGrid = tunegrid )
+    bagged_models[[i]] <- train(classe ~ ., data = train_raw_train, method = "rf", trControl = train.control, ntree = 10, tuneGrid = tunegrid )
 }
-ensemPred <- predict(bagged_models, newdata = train_raw_test[,-1])
+ensemPred <- predict(bagged_models, newdata = train_raw_test)
 
 ensemDF <- as.data.frame(ensemPred)
 colnames(ensemDF) <- paste("pred", 1:N_MODEL, sep = "_")
@@ -123,11 +133,13 @@ cm
 ```
 
 ## Test on unknown testing set
+Here, we applied our model to predict classe based on data that that we have never seen.
 
 ```{r}
 result <- predict(rfmodel, newdata = testing_raw[,c(featureSelect)])
+result
 ```
 
 ## Conclusion
 
-We have built a random forest classifier that can detect whether a person is performing barbell lifting correctly with an accuracy of > 97%. When we used bagging method with multiple models, the accuracy is evener higher (>99%)
+We have built a random forest classifier that can detect whether a person is performing barbell lifting correctly with an accuracy of 99.0%. When we used bagging method with multiple models, the accuracy is evener higher (99.7%)
