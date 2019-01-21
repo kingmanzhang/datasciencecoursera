@@ -1,0 +1,36 @@
+Fuel Efficiency Prediction
+========================================================
+author: Xingmin Aaron Zhang
+date: 01/20/2019
+autosize: true
+
+Overview
+========================================================
+
+This is a presentation for Shiny App [Predict Your Car Fuel Efficiency](https://kingmanzhang.shinyapps.io/dataproductsweek4/) <https://kingmanzhang.shinyapps.io/dataproductsweek4/>.
+
+We have built a linear model between fuel efficiency and transmission type, number of cylinders and weight with the mtcars dataset in R. The app allows a user to use the model for predictions.
+
+Train Data
+========================================================
+
+Here is the structure of the dataset that we used for the model
+```{r}
+str(mtcars)
+```
+
+
+
+Input Parameters
+========================================================
+
+Users need to provide the following parameters:
+
+- transmission type. Default value: automatic
+- number of cylinders. Default value: 6
+- weight in pounds. Default value: 3500 lbs
+
+App Output
+========================================================
+
+The app make a prediction with user specified parameters and plot the data point together with training data. User data point is shown as a cross, while training data is shown as circles. The size of data points corresponds to the number of cylinders and the color corresponds to the type of transmissions. 

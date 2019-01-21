@@ -1,0 +1,17 @@
+---
+title: "DataProductsWeek3"
+author: "Xingmin Aaron Zhang"
+date: "1/20/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Here we plot mtcars dataset with Plotly. 
+```{r message=FALSE, fig.align='center', fig.width=6, fig.height=5}
+library(plotly)
+plot_ly(data = mtcars, x = ~as.factor(gear), y = ~mpg, color = ~as.factor(gear), type = "box") %>% layout(title = "Fuel efficiency changes with the number of gears", xaxis = list(title = "gear number"), showlegend = FALSE)
+```
+
