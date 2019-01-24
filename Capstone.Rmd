@@ -1,0 +1,27 @@
+---
+title: "DataScienceCapstone"
+author: "Xingmin Aaron Zhang"
+date: "1/23/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Download data
+```{r}
+setwd("~/git/datasciencecoursera")
+fileurl = "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+destfile = "Coursera-Swiftkey.zip"
+if (!file.exists(destfile)) {
+    download.file(fileurl, destfile = destfile)
+}
+unzip(destfile, list = TRUE)
+```
+
+Data cleaning
+```{r}
+en.twitter <- readLines(unzip(destfile, "final/en_US/en_US.twitter.txt"))
+```
+
