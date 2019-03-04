@@ -5,11 +5,16 @@ date: "1/23/2019"
 output: html_document
 ---
 
+# Goal:
+We will explore the Swiftkey dataset to develop some intutitions about this project.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Download data
+# Download data
+
+We will download the dataset directly from Coursera website. We can see that we have blogs, news and twitter texts for four languages. We will work on the English texts.
 ```{r}
 setwd("~/git/datasciencecoursera")
 fileurl = "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
@@ -17,69 +22,137 @@ destfile = "Coursera-Swiftkey.zip"
 if (!file.exists(destfile)) {
     download.file(fileurl, destfile = destfile)
 }
+# show files in the zip folder
 unzip(destfile, list = TRUE)
 ```
 
-Count the lines of each corpus
-```{r}
+
+```{r echo=FALSE}
+## unzip file
+if (!file.exists("final")){
+  unzip(destfile)
+}
+```
+
+# Data cleaning and exploratory analysis
+We count the number of lines for three English corpus: twitter, news and blogs. From the graph we can see that blogs and news have roughly similar line counts while twitter corpus has twice line counts. 
+
+```{r echo=FALSE, message=FALSE, fig.align='center', fig.width=4, fig.height=4}
+corpusnames <- c("twitter", "news", "blogs")
 EN.TWITTER.PATH = "final/en_US/en_US.twitter.txt"
 EN.NEWS.PATH = "final/en_US/en_US.news.txt"
 EN.BLOGS.PATH = "final/en_US/en_US.blogs.txt"
+
+paths <- c(EN.TWITTER.PATH, EN.NEWS.PATH, EN.BLOGS.PATH)
+names(paths) <- corpusnames
 
 linecount <- function(paths) {
     counts <- vector(mode = "integer", length = length(paths))
     for (i in 1:length(paths)) {
         filecon <- file(paths[i], "r")
-        counts[i] <- length(readLines(filecon))
+        counts[i] <- length(readLines(filecon, skipNul = TRUE))
         close(filecon)
     }
     counts
 }
-
-paths <- c(EN.TWITTER.PATH, EN.NEWS.PATH, EN.BLOGS.PATH)
 linecounts <- linecount(paths)
+names(linecounts) <- corpusnames
 
-df <- data.frame(type = c("twitter", "news", "blogs"), linecount = linecounts)
-```
+df <- data.frame(type = corpusnames, linecount = linecounts)
 
-plot the line counts
-```{r}
 library(tidyverse)
-ggplot(df) + geom_bar(aes(x = type, y= linecount), stat = "identity")
+ggplot(df) + geom_bar(aes(x = type, y= linecount), stat = "identity") + ggtitle("total line counts for each type of corpuses") + theme(plot.title = element_text(hjust = 0.5)) + xlab("")
 ```
 
-
-select subsets of data from a file
-```{r}
-corpus_subset <- function(path, percent = 0.0001) {
-    filecon <- file(path, "r")
-    LINE_COUNT <- length(readLines(filecon))
-    readOrNot <- rbinom(LINE_COUNT, 1, percent)
+Before we do more sophisticated analysis, we select subsets of data from each file to reduce memory requirement. Since we have at least ~ 1 million lines for each file, we can propably get a good sense of the corpuses from 0.01% of the entire sample.
+```{r echo=FALSE}
+corpus_subset <- function(corpus_name = "twitter", percent = 0.0001) {
+    LINE_COUNT <- linecounts[corpus_name]
+    readOrNot <- rbinom(LINE_COUNT, 1, 0.0001)
     subset_lines <- vector(mode = "character", length = sum(readOrNot))
+    i = 1
     j = 1
-    for (i in 1:LINE_COUNT) {
-        if (readOrNot[i]) {
-            subset_lines[i] = readLines(filecon, n = 1)
-            j = j + 1
-        } else {
-            readLines(filecon, n = 1)
-        }
+    filecon <- file(unname(paths[corpus_name]), "r")
+    while (i <= LINE_COUNT) {
+      newline = readLines(filecon, n = 1, skipNul = TRUE)
+      if (readOrNot[i]){
+        subset_lines[j] = newline
+        j = j + 1
+      }
+      i = i + 1
     }
     close(filecon)
     subset_lines
 }
 
-en.twitter.subset <- corpus_subset(EN.TWITTER.PATH)
-en.news.subset <- corpus_subset(EN.NEWS.PATH)
-en.blogs.subset <- corpus_subset(EN.BLOGS.PATH)
+en.twitter.subset <- corpus_subset("twitter")
+en.news.subset <- corpus_subset("news")
+en.blogs.subset <- corpus_subset("blogs")
 
-```
-write twitter subset
-```{r}
-write(subset_lines, file = "final/en_US/twitter_subset.txt")
+# We will save this for future use.
+if (!dir.exists("final/en_subsets")) {
+  dir.create("final/en_subsets")
+}
+
+write(en.twitter.subset, file = "final/en_subsets/twitter_subset.txt")
+write(en.news.subset, file = "final/en_subsets/news_subset.txt")
+write(en.blogs.subset, file = "final/en_subsets/blogs_subset.txt")
 ```
 
-```{r message=FALSE}
+Next, we are going to count the words for each corpus. We performed some cleanings: removed unnecessary white spaces, converted to lower case and removed punctuations.
+```{r message=FALSE, echo=FALSE}
 library(tm)
+#We first import the subsets into separate corpuses.
+twitter_corpus<- VCorpus(VectorSource(en.twitter.subset))
+news_corpus <- VCorpus(VectorSource(en.news.subset))
+blog_corpus <- VCorpus(VectorSource(en.blogs.subset))
+
+corpuses <- list(twitter_corpus, news_corpus, blog_corpus)
+preprocess <- function(corpus) {
+  corpus <- tm_map(corpus, stripWhitespace)
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removePunctuation)
+  #corpus <- tm_map(corpus, removeNumbers)
+  corpus
+}
+processedCorpuses <- lapply(corpuses, preprocess)
+dtms <- lapply(processedCorpuses, function(x){DocumentTermMatrix(x)})
+df$docCounts <- sapply(dtms, function(x){dim(x)[1]})
+df$uniqueWordCounts <- sapply(dtms, function(x){dim(x)[2]})
+df$totalWordCount <- sapply(dtms, function(x){sum(x)})
 ```
+
+First we looked at total words counts for each corpuses subset. From the subset of each corpuses, we can see that news have the most word count, twitter has the least even though it has most lines, and blogs are in the middle.
+```{r echo=FALSE, message=FALSE, fig.align='center', fig.cap="word count for each corpus subset", fig.width=6, fig.height=3}
+p1 <- ggplot(df) + geom_bar(aes(x = type, y = totalWordCount), stat = "identity") + xlab("") + ylab("count") + ggtitle("total word count") + theme(plot.title = element_text(hjust = 0.5))
+p2 <- ggplot(df) + geom_bar(aes(x = type, y = uniqueWordCounts), stat = "identity") + xlab("") + ylab("count") + ggtitle("unique word count") + theme(plot.title = element_text(hjust = 0.5))
+
+library(gridExtra)
+grid.arrange(p1, p2, nrow = 1)
+```
+
+
+For each document/line, blogs or news have roughly similar number of words, while twitter has the least, which is totally reasonable.
+```{r echo=FALSE, fig.align='center', fig.cap="word count per document for each corpus subset", fig.width=6, fig.height=3}
+p3 <- ggplot(df) + geom_bar(aes(x = type, y = totalWordCount/docCounts), stat = "identity") + xlab("") + ggtitle("average word count") + theme(plot.title = element_text(hjust = 0.5))
+p4 <- ggplot(df) + geom_bar(aes(x = type, y = uniqueWordCounts/docCounts), stat = "identity") + xlab("") + ggtitle("average unique word count") + theme(plot.title = element_text(hjust = 0.5))
+
+grid.arrange(p3, p4, nrow = 1)
+```
+
+# N-gram analysis
+In the next section, we are going to calculate the frequent N-gram from each corpus. 
+```{r}
+dyn.load("/Library/Java/JavaVirtualMachines/jdk-11.0.2.jdk/Contents/Home/lib/server/libjvm.dylib")
+library(RWeka)
+token1gram <- function(x) {NGramToken}
+```
+
+
+# Conclusions
+
+From our exploratory analysis, we can conclude that:
+* There are more twitter lines than news or blogs
+* News have more total words and total unique words, followed by blogs and twitter.
+* Blogs have the most total words and unique words per document, closely followed by news. While twitters have the lease total words and unique words per document.
 
