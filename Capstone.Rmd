@@ -1,0 +1,85 @@
+---
+title: "DataScienceCapstone"
+author: "Xingmin Aaron Zhang"
+date: "1/23/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Download data
+```{r}
+setwd("~/git/datasciencecoursera")
+fileurl = "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+destfile = "Coursera-Swiftkey.zip"
+if (!file.exists(destfile)) {
+    download.file(fileurl, destfile = destfile)
+}
+unzip(destfile, list = TRUE)
+```
+
+Count the lines of each corpus
+```{r}
+EN.TWITTER.PATH = "final/en_US/en_US.twitter.txt"
+EN.NEWS.PATH = "final/en_US/en_US.news.txt"
+EN.BLOGS.PATH = "final/en_US/en_US.blogs.txt"
+
+linecount <- function(paths) {
+    counts <- vector(mode = "integer", length = length(paths))
+    for (i in 1:length(paths)) {
+        filecon <- file(paths[i], "r")
+        counts[i] <- length(readLines(filecon))
+        close(filecon)
+    }
+    counts
+}
+
+paths <- c(EN.TWITTER.PATH, EN.NEWS.PATH, EN.BLOGS.PATH)
+linecounts <- linecount(paths)
+
+df <- data.frame(type = c("twitter", "news", "blogs"), linecount = linecounts)
+```
+
+plot the line counts
+```{r}
+library(tidyverse)
+ggplot(df) + geom_bar(aes(x = type, y= linecount), stat = "identity")
+```
+
+
+select subsets of data from a file
+```{r}
+corpus_subset <- function(path, percent = 0.0001) {
+    filecon <- file(path, "r")
+    LINE_COUNT <- length(readLines(filecon))
+    readOrNot <- rbinom(LINE_COUNT, 1, percent)
+    subset_lines <- vector(mode = "character", length = sum(readOrNot))
+    j = 1
+    for (i in 1:LINE_COUNT) {
+        if (readOrNot[i]) {
+            subset_lines[i] = readLines(filecon, n = 1)
+            j = j + 1
+        } else {
+            readLines(filecon, n = 1)
+        }
+    }
+    close(filecon)
+    subset_lines
+}
+
+en.twitter.subset <- corpus_subset(EN.TWITTER.PATH)
+en.news.subset <- corpus_subset(EN.NEWS.PATH)
+en.blogs.subset <- corpus_subset(EN.BLOGS.PATH)
+
+```
+write twitter subset
+```{r}
+write(subset_lines, file = "final/en_US/twitter_subset.txt")
+```
+
+```{r message=FALSE}
+library(tm)
+```
+

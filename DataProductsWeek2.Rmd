@@ -1,0 +1,58 @@
+---
+title: "DataProductsWeek2"
+author: "Xingmin Aaron Zhang"
+date: "1/19/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+This page will show the position and size of Ivy League universities on a map. 
+
+## Data preparation
+We define a class to represent ivy league universities and collect information (name, latitude, longitude). Enrollment information is from [Wikipedia](https://en.wikipedia.org/wiki/Ivy_League).
+```{r}
+setClass("University", representation(name = "character", latitude = "numeric", longitude = "numeric", undergrad = "numeric", grad = "numeric", homepage = "character"))
+setMethod("show", "University", function(object) {
+    cat("name       :", object@name, "\n")
+    cat("latitude   :", object@latitude, "\t", "longitude  :", object@longitude, "\n")
+    cat("undergrad  :", object@undergrad, "\tgrad    :", object@grad, "\n")
+    cat("home page  :", object@homepage)
+})
+brown <- new("University", name = "Brown University", latitude = 41.8267758, longitude =-71.4047369, undergrad = 6670, grad = 3061, homepage = "https://www.brown.edu")
+columbia <- new("University", name = "Columbia University", latitude = 40.8075395, longitude = -73.9647614, undergrad = 8868, grad = 20116, homepage = "https://www.columbia.edu")
+cornell <- new("University", name = "Cornell University", latitude = 42.4534531, longitude = -76.4756914, undergrad = 15182, grad = 8418, homepage = "https://www.cornell.edu")
+dartmouth <- new("University", name = "Dartmouth College", latitude = 43.7037867, longitude = -72.290456, undergrad = 4310, grad = 2099, homepage = "https://home.dartmouth.edu")
+harvard <- new("University", name = "Harvard University", latitude = 42.371331848, longitude = -71.116832866, undergrad = 6699, grad = 13120, homepage = "https://www.harvard.edu")
+upenn <- new("University", name = "University of Pennsylvania", latitude = 39.9499274, longitude = -75.1950999, undergrad = 10496, grad = 11013, homepage = "https://www.upenn.edu")
+princeton <- new("University", name = "Princeton University", latitude = 40.34873, longitude = -74.65931, undergrad = 5394, grad = 2879, homepage = "https://www.princeton.edu")
+yale <- new("University", name = "Yale University", latitude = 41.30666544, longitude = -72.922662976, undergrad = 5453, grad = 6859, homepage = "https://www.yale.edu")
+ivyLeague <- c(brown, columbia, cornell, dartmouth, harvard, upenn, princeton, yale)
+```
+
+## Create map (2019/01/19)
+Next, we create a map and mark the universities. Each circle represent a university. The radius of the circle is proportial to total student enrollment (undergraduate and graduate).
+```{r fig.align='center', fig.height=6, fig.width=8, fig.cap="Ivy League universities"}
+label <- sapply(ivyLeague, function(x) x@name)
+lat <- sapply(ivyLeague, function(x) x@latitude)
+long <- sapply(ivyLeague, function(x) x@longitude)
+url <- sapply(ivyLeague, function(x) {
+    website = x@homepage
+    name = x@name
+    sprintf("<a href='%s'>%s</a>", website, name)
+    })
+enroll <- sapply(ivyLeague, function(x) x@undergrad + x@grad)
+library(leaflet)
+ivyplot <- leaflet() %>%
+    addTiles() %>%
+    addCircleMarkers(lng = long, lat = lat,  
+                     label = label, popup = url, 
+                     radius = enroll/1000, 
+                     fillColor = "orange", fillOpacity = 0.5,
+                     stroke = TRUE, color = "blue", weight = 3)
+ivyplot
+```
+
