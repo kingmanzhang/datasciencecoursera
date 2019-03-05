@@ -66,9 +66,9 @@ ggplot(df) + geom_bar(aes(x = type, y= linecount), stat = "identity") + ggtitle(
 
 Before we do more sophisticated analysis, we select subsets of data from each file to reduce memory requirement. Since we have at least ~ 1 million lines for each file, we can propably get a good sense of the corpuses from 0.01% of the entire sample.
 ```{r echo=FALSE}
-corpus_subset <- function(corpus_name = "twitter", percent = 0.0001) {
+corpus_subset <- function(corpus_name = "twitter", percent = 0.001) {
     LINE_COUNT <- linecounts[corpus_name]
-    readOrNot <- rbinom(LINE_COUNT, 1, 0.0001)
+    readOrNot <- rbinom(LINE_COUNT, 1, percent)
     subset_lines <- vector(mode = "character", length = sum(readOrNot))
     i = 1
     j = 1
@@ -142,17 +142,72 @@ grid.arrange(p3, p4, nrow = 1)
 
 # N-gram analysis
 In the next section, we are going to calculate the frequent N-gram from each corpus. 
-```{r}
-dyn.load("/Library/Java/JavaVirtualMachines/jdk-11.0.2.jdk/Contents/Home/lib/server/libjvm.dylib")
-library(RWeka)
-token1gram <- function(x) {NGramToken}
+```{r echo=FALSE}
+#options("java.home"="/Library/Java/JavaVirtualMachines/jdk-9.0.4.jdk/Contents/Home/lib")
+
+#Sys.setenv(LD_LIBRARY_PATH='$JAVA_HOME/server')
+
+#dyn.load('/Library/Java/JavaVirtualMachines/jdk-9.0.4.jdk/Contents/Home/lib/server/libjvm.dylib')
+
+#library(rJava)
+
+#library(RWeka)
+nGramTokenizer <- function(n) { 
+    function(x) {
+        #NGramTokenizer(x, Weka_control(min = n, max = n))
+        unlist(lapply(ngrams(words(x), n), paste, collapse = " "), use.names = FALSE)
+    }   
+}
+
+oneGramTokenizer = nGramTokenizer(1)
+twoGramTokenizer = nGramTokenizer(2)
+threeGramTokenizer = nGramTokenizer(3)
+    
 ```
 
+We now start to explore n-gram distributions. We will 
+```{r echo=FALSE}
+dtm1 <- lapply(processedCorpuses, function(x){DocumentTermMatrix(x, list(tokenize = oneGramTokenizer))})
+
+dtm2 <- lapply(processedCorpuses, function(x){DocumentTermMatrix(x, list(tokenize = twoGramTokenizer))})
+
+dtm3 <- lapply(processedCorpuses, function(x){DocumentTermMatrix(x, list(tokenize = threeGramTokenizer))})
+
+```
+
+Most frequent 15 1-grams:
+```{r echo=FALSE}
+mostFreqNGram <- function(x) {
+    dtmComb <- c(x[[1]], x[[2]], x[[3]])
+    wordList <- colnames(dtmComb)
+    freq <- colSums(as.matrix(dtmComb))
+
+    wordFreqOneGram <- data.frame(wordList, freq)
+    wordFreqOneGram %>% arrange(-freq)
+}
+
+
+mostFreqNGram(dtm1) %>% head(n = 15)
+```
+
+Most frequent 2-grams:
+```{r echo=FALSE}
+mostFreqNGram(dtm2) %>% head(n = 15)
+```
+
+Most frequent 3-grams:
+```{r echo=FALSE}
+mostFreqNGram(dtm3) %>% head(n = 15)
+```
 
 # Conclusions
 
 From our exploratory analysis, we can conclude that:
+
 * There are more twitter lines than news or blogs
 * News have more total words and total unique words, followed by blogs and twitter.
 * Blogs have the most total words and unique words per document, closely followed by news. While twitters have the lease total words and unique words per document.
+* We also showed the most frequent words, word pairs, and word triplets. 
+
+Going forward, we can use the N-gram frequency to make predictions on the next input.
 
