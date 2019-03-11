@@ -293,6 +293,33 @@ predictNext <- function(sentence, n = 3) {
         predictWord3(tokens[NUM_TOKENS - 1], tokens[NUM_TOKENS])
     }
 }
+
+# combined training method
+train <- function(percent = 0.01, n = 4) {
+    # subsetting data
+    corpus_sampling <- c(corpus_subset("twitter", percent), 
+                         corpus_subset("blogs", percent), 
+                         corpus_subset("news", percent))
+    # combining data
+    corpus_sampling <- str_c(corpus_sampling, collapse = " ")
+    corpus_sampling <- VCorpus(VectorSource(corpus_sampling))
+    # preprocess data
+    preprocessed <- preprocess(corpus_sampling)
+    # create unigram, bigram, ... n-gram
+    ngram <- list()
+    for (i in 1:n) {
+        tokenizer = nGramTokenizer(i)
+        dtm <- DocumentTermMatrix(combinedCorpusProcessed, list(tokenize = tokenizer, wordLengths=c(1, Inf)))
+        ngram[[i]] = dtm
+    }
+    # compute frequency
+    ngram
+}
+
+dtm <- train(percent = 0.1)
+predictNext <- function(sentence) {
+    
+}
 ```
 
 ```{r}
