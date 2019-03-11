@@ -5,14 +5,17 @@ date: "1/23/2019"
 output: html_document
 ---
 
-# Goal:
+
+# Section 1
+
+## Goal:
 We will explore the Swiftkey dataset to develop some intutitions about this project.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Download data
+## Download data
 
 We will download the dataset directly from Coursera website. We can see that we have blogs, news and twitter texts for four languages. We will work on the English texts.
 ```{r}
@@ -64,8 +67,8 @@ library(tidyverse)
 ggplot(df) + geom_bar(aes(x = type, y= linecount), stat = "identity") + ggtitle("total line counts for each type of corpuses") + theme(plot.title = element_text(hjust = 0.5)) + xlab("")
 ```
 
-Before we do more sophisticated analysis, we select subsets of data from each file to reduce memory requirement. Since we have at least ~ 1 million lines for each file, we can propably get a good sense of the corpuses from 0.01% of the entire sample.
-```{r echo=FALSE}
+Before we do more sophisticated analysis, we select subsets of data from each file to reduce memory requirement. Since we have at least ~ 1 million lines for each file, we can propably get a good sense of the corpuses from 1% of the entire sample.
+```{r echo=FALSE, cache=TRUE}
 corpus_subset <- function(corpus_name = "twitter", percent = 0.001) {
     LINE_COUNT <- linecounts[corpus_name]
     readOrNot <- rbinom(LINE_COUNT, 1, percent)
@@ -85,21 +88,36 @@ corpus_subset <- function(corpus_name = "twitter", percent = 0.001) {
     subset_lines
 }
 
-en.twitter.subset <- corpus_subset("twitter")
-en.news.subset <- corpus_subset("news")
-en.blogs.subset <- corpus_subset("blogs")
+subsetAndSave <- function() {
+    en.twitter.subset <- corpus_subset("twitter", percent = 0.001)
+    en.news.subset <- corpus_subset("news", percent = 0.001)
+    en.blogs.subset <- corpus_subset("blogs", percent = 0.001)
 
-# We will save this for future use.
-if (!dir.exists("final/en_subsets")) {
-  dir.create("final/en_subsets")
+    # We will save this for future use.
+    if (!dir.exists("final/en_subsets")) {
+         dir.create("final/en_subsets")
+    }
+
+    write(en.twitter.subset, file = "final/en_subsets/twitter_subset.txt")
+    write(en.news.subset, file = "final/en_subsets/news_subset.txt")
+    write(en.blogs.subset, file = "final/en_subsets/blogs_subset.txt")
 }
 
-write(en.twitter.subset, file = "final/en_subsets/twitter_subset.txt")
-write(en.news.subset, file = "final/en_subsets/news_subset.txt")
-write(en.blogs.subset, file = "final/en_subsets/blogs_subset.txt")
+subsetAndSave()
 ```
 
-Next, we are going to count the words for each corpus. We performed some cleanings: removed unnecessary white spaces, converted to lower case and removed punctuations.
+```{r echo=FALSE}
+# load subsets
+en.twitter.subset <- readLines(con <- file("final/en_subsets/twitter_subset.txt"))
+close(con)
+en.news.subset <- readLines(con <- file("final/en_subsets/news_subset.txt"))
+close(con)
+en.blogs.subset <- readLines(con <- file("final/en_subsets/blogs_subset.txt"))
+close(con)
+```
+
+
+Next, we are going to count the words for each corpus. We performed some cleanings: removed unnecessary white spaces, removed numbers, converted to lower case and removed punctuations.
 ```{r message=FALSE, echo=FALSE}
 library(tm)
 #We first import the subsets into separate corpuses.
@@ -109,10 +127,11 @@ blog_corpus <- VCorpus(VectorSource(en.blogs.subset))
 
 corpuses <- list(twitter_corpus, news_corpus, blog_corpus)
 preprocess <- function(corpus) {
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeNumbers)
+  #corpus <- tm_map(corpus, removeWords, stopwords(kind = "en"))
   corpus <- tm_map(corpus, stripWhitespace)
   corpus <- tm_map(corpus, content_transformer(tolower))
-  corpus <- tm_map(corpus, removePunctuation)
-  #corpus <- tm_map(corpus, removeNumbers)
   corpus
 }
 processedCorpuses <- lapply(corpuses, preprocess)
@@ -140,21 +159,11 @@ p4 <- ggplot(df) + geom_bar(aes(x = type, y = uniqueWordCounts/docCounts), stat 
 grid.arrange(p3, p4, nrow = 1)
 ```
 
-# N-gram analysis
+## N-gram analysis
 In the next section, we are going to calculate the frequent N-gram from each corpus. 
 ```{r echo=FALSE}
-#options("java.home"="/Library/Java/JavaVirtualMachines/jdk-9.0.4.jdk/Contents/Home/lib")
-
-#Sys.setenv(LD_LIBRARY_PATH='$JAVA_HOME/server')
-
-#dyn.load('/Library/Java/JavaVirtualMachines/jdk-9.0.4.jdk/Contents/Home/lib/server/libjvm.dylib')
-
-#library(rJava)
-
-#library(RWeka)
 nGramTokenizer <- function(n) { 
     function(x) {
-        #NGramTokenizer(x, Weka_control(min = n, max = n))
         unlist(lapply(ngrams(words(x), n), paste, collapse = " "), use.names = FALSE)
     }   
 }
@@ -165,42 +174,53 @@ threeGramTokenizer = nGramTokenizer(3)
     
 ```
 
-We now start to explore n-gram distributions. We will 
+We now start to explore n-gram distributions. We will combine the subsets of all twitters, blogs and news as one document because we only care about the combined result. 
 ```{r echo=FALSE}
-dtm1 <- lapply(processedCorpuses, function(x){DocumentTermMatrix(x, list(tokenize = oneGramTokenizer))})
+combinedDocuments <- c(en.twitter.subset, en.news.subset, en.blogs.subset)
+collapseToOne <- paste(combinedDocuments, collapse = " ")
+combinedCorpus <- VCorpus(VectorSource(collapseToOne))
+combinedCorpusProcessed <- preprocess(combinedCorpus)
+dtm1 <- DocumentTermMatrix(combinedCorpusProcessed, list(tokenize = oneGramTokenizer, wordLengths=c(1, Inf)))
+dtm2 <- DocumentTermMatrix(combinedCorpusProcessed, list(tokenize = twoGramTokenizer))
+dtm3 <- DocumentTermMatrix(combinedCorpusProcessed, list(tokenize = threeGramTokenizer))
 
-dtm2 <- lapply(processedCorpuses, function(x){DocumentTermMatrix(x, list(tokenize = twoGramTokenizer))})
+#dtm1 <- lapply(processedCorpuses, function(x){DocumentTermMatrix(x, list(tokenize = oneGramTokenizer, wordLengths=c(1, Inf)))})
 
-dtm3 <- lapply(processedCorpuses, function(x){DocumentTermMatrix(x, list(tokenize = threeGramTokenizer))})
+#dtm2 <- lapply(processedCorpuses, function(x){DocumentTermMatrix(x, list(tokenize = twoGramTokenizer))})
+
+#dtm3 <- lapply(processedCorpuses, function(x){DocumentTermMatrix(x, list(tokenize = threeGramTokenizer))})
 
 ```
 
 Most frequent 15 1-grams:
 ```{r echo=FALSE}
 mostFreqNGram <- function(x) {
-    dtmComb <- c(x[[1]], x[[2]], x[[3]])
-    wordList <- colnames(dtmComb)
-    freq <- colSums(as.matrix(dtmComb))
+    #dtmComb <- c(x[[1]], x[[2]], x[[3]])
+    wordList <- colnames(x)
+    freq <- colSums(as.matrix(x))
 
     wordFreqOneGram <- data.frame(wordList, freq)
     wordFreqOneGram %>% arrange(-freq)
 }
 
 
-mostFreqNGram(dtm1) %>% head(n = 15)
+onegram <- mostFreqNGram(dtm1)
+onegram %>% head(n = 15)
 ```
 
 Most frequent 2-grams:
 ```{r echo=FALSE}
-mostFreqNGram(dtm2) %>% head(n = 15)
+bigram <- mostFreqNGram(dtm2) 
+bigram %>% head(n = 15)
 ```
 
 Most frequent 3-grams:
 ```{r echo=FALSE}
-mostFreqNGram(dtm3) %>% head(n = 15)
+trigram <- mostFreqNGram(dtm3) 
+trigram %>% head(n = 15)
 ```
 
-# Conclusions
+## Conclusions
 
 From our exploratory analysis, we can conclude that:
 
@@ -210,4 +230,84 @@ From our exploratory analysis, we can conclude that:
 * We also showed the most frequent words, word pairs, and word triplets. 
 
 Going forward, we can use the N-gram frequency to make predictions on the next input.
+
+
+# Section 2
+
+## Goals
+Build a n-gram model to predict the next word
+
+## Prediction with data frame implementation
+The idea of the predictive model is using bigram to predict word based on previous 1-word, and using trigram to predict next word based on previous bi-gram.
+
+One straightward way to implement the idea is using a data frame to save all 1,2 and 3-grams. In this dataframe, there will be three columns for individual words. The first column is just 1-grams words. The second column is the second word of bigrams, so that concatenating it with the word in the first column gives a bigram. This rule extends to the third column and trigrams. 
+
+```{r}
+onegram_dataframe <- onegram %>% rename(word1 = wordList) %>% mutate(word1 = as.character(word1))
+bigram_dataframe <- bigram %>% separate(wordList, c("word1", "word2"), " ")
+trigram_dataframe <- trigram %>% separate(wordList, c("word1", "word2", "word3"), " ")
+
+resource <- onegram_dataframe %>% inner_join(bigram_dataframe, by = "word1") %>% inner_join(trigram_dataframe, by = c("word1", "word2"))
+```
+
+```{r}
+predictWord1 <- function() {
+    onegram_dataframe[1,1]
+}
+
+predictWord2 <- function(query) {
+    selection <- resource %>% filter(word1 == query)
+    candidates <- unique(selection$word2)
+    if (length(candidates) > 0) {
+        return(candidates[1])
+    } else {
+        return(predictWord1())
+    }
+}
+
+predictWord3 <- function(query1, query2) {
+    selection <- resource %>% filter(word1 == query1 & word2 == query2)
+    candidates <- unique(selection$word3)
+    if (length(candidates) > 0) {
+        return (candidates[1])
+    } else {
+        return(predictWord2(query1))
+    }
+}
+
+processSentence <- function(sentence) {
+    sentence <- removePunctuation(sentence)
+    sentence <- removeNumbers(sentence)
+    sentence <- stripWhitespace(sentence)
+    sentence <- tolower(sentence)
+    sentence
+}
+
+predictNext <- function(sentence, n = 3) {
+    processed <- processSentence(sentence)
+    tokens <- strsplit(sentence, " ")[[1]]
+    NUM_TOKENS <- length(tokens)
+    if (NUM_TOKENS <= 1) {
+        predictWord2(tokens[1])
+    } else {
+        predictWord3(tokens[NUM_TOKENS - 1], tokens[NUM_TOKENS])
+    }
+}
+```
+
+```{r}
+quizes <- c("The guy in front of me just bought a pound of bacon, a bouquet, and a case of", 
+               "You're the reason why I smile everyday. Can you follow me please? It would mean the", 
+               "Hey sunshine, can you follow me and make me the",
+               "Very early observations on the Bills game: Offense still struggling but the", 
+               "Go on a romantic date at the", 
+               "Well I'm pretty sure my granny has some old bagpipes in her garage I'll dust them off and be on my", 
+               "Ohhhhh #PointBreak is on tomorrow. Love that film and haven't seen it in quite some", 
+               "After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little", 
+               "Be grateful for the good times and keep the faith during the", 
+               "If this isn't the cutest thing you've ever seen, then you must be")
+for (i in 1: length(quizes)) {
+    print(paste(i, predictNext(quizes[i])))
+}
+```
 
