@@ -294,6 +294,12 @@ predictNext <- function(sentence, n = 3) {
     }
 }
 
+# trim end word
+trimEndWord <- function(x) {
+  splitted <- strsplit(x, " ")
+  sapply(splitted, function(x) {paste(x[1 : length(x) - 1])})
+}
+
 # combined training method
 train <- function(percent = 0.01, n = 4) {
     # subsetting data
@@ -306,17 +312,49 @@ train <- function(percent = 0.01, n = 4) {
     # preprocess data
     preprocessed <- preprocess(corpus_sampling)
     # create unigram, bigram, ... n-gram
-    ngram <- list()
+    #ngram <- list()
+    require(triebeard)
+    wordtrie <- trie(character(), numeric())
     for (i in 1:n) {
         tokenizer = nGramTokenizer(i)
-        dtm <- DocumentTermMatrix(combinedCorpusProcessed, list(tokenize = tokenizer, wordLengths=c(1, Inf)))
-        ngram[[i]] = dtm
+        dtm <- DocumentTermMatrix(preprocessed, list(tokenize = tokenizer, wordLengths=c(1, Inf)))
+        trie_add(wordtrie, keys = colnames(dtm), values = dtm$v)
+#        ngram[[i]] = dtm
     }
     # compute frequency
-    ngram
+    # ngram_count <- list()
+    # for (i in 1:n) {
+    #   dataframe <- data.frame(key = colnames(ngram[[i]]), count = ngram[[i]]$v)
+    #   ngram_count[[i]] <- dataframe
+    # }
+    # rm(ngram) ## clean this out of memory
+    # for (i in n:2){
+    #   ngram_count[[i]] <- ngram_count[[i]] %>% mutate(prop <- function(x) {})
+    # }
+    wordtrie
 }
 
-dtm <- train(percent = 0.1)
+dtm <- train(percent = 0.0001)
+
+trie_prob <- function(trie, n) {
+  keys <- get_keys(trie)
+  keys_current <- keys[sapply(strsplit(keys, " "), length) == n]
+  for (i in n:1) {
+    values_current <- unlist(prefix_match(trie, keys_current))
+    keys_trim <- trimEndWord(keys_current)
+    values_trim <- unlist(prefix_match(trie, keys_current))
+    if (i >= 2) {
+      trie_add(trie, keys_current, values_current/values_trim)
+    } else {
+      trie_add(trie, keys_current, values_current/sum(values_current))
+    }
+    keys_current <- keys_trim
+  }
+  trie
+}
+
+wordtrie <- trie(keys = c("A", "A a", "A b", "A c", "A a a", "B", "B a", "B b", "B c"), values <- c(5, 3, 1, 1, 1, 6, 2, 2, 2))
+trie_prob(wordtrie, 3)
 predictNext <- function(sentence) {
     
 }
