@@ -297,7 +297,7 @@ predictNext <- function(sentence, n = 3) {
 # trim end word
 trimEndWord <- function(x) {
   splitted <- strsplit(x, " ")
-  sapply(splitted, function(x) {paste(x[1 : length(x) - 1])})
+  sapply(splitted, function(x) {paste(x[1 : length(x) - 1], collapse = " ")})
 }
 
 # combined training method
@@ -312,43 +312,49 @@ train <- function(percent = 0.01, n = 4) {
     # preprocess data
     preprocessed <- preprocess(corpus_sampling)
     # create unigram, bigram, ... n-gram
-    #ngram <- list()
+    require(hash)
     require(triebeard)
+    wordhash <- hash()
     wordtrie <- trie(character(), numeric())
     for (i in 1:n) {
         tokenizer = nGramTokenizer(i)
         dtm <- DocumentTermMatrix(preprocessed, list(tokenize = tokenizer, wordLengths=c(1, Inf)))
-        trie_add(wordtrie, keys = colnames(dtm), values = dtm$v)
-#        ngram[[i]] = dtm
+        newWordList <- colnames(dtm)
+        newWordCount <- dtm$v
+        if (i == 1) {
+            total <- sum(newWordCount)
+            trie_add(wordtrie, keys = newWordList, values = newWordCount/total)
+        } else {
+            newWordParent <- trimEndWord(newWordList)
+            parentCount <- values(wordhash[newWordParent])
+            trie_add(wordtrie, keys = newWordList, values = newWordCount/parentCount)
+        }
+        clear(wordhash) # just save keys that are required for next round
+        .set(wordhash, keys = newWordList, values = newWordCount)
     }
-    # compute frequency
-    # ngram_count <- list()
-    # for (i in 1:n) {
-    #   dataframe <- data.frame(key = colnames(ngram[[i]]), count = ngram[[i]]$v)
-    #   ngram_count[[i]] <- dataframe
-    # }
-    # rm(ngram) ## clean this out of memory
-    # for (i in n:2){
-    #   ngram_count[[i]] <- ngram_count[[i]] %>% mutate(prop <- function(x) {})
-    # }
+    rm(wordhash)
+
     wordtrie
 }
 
-dtm <- train(percent = 0.0001)
+wordhash <- train(percent = 0.0001)
+
+wordtrie <- trie(character(), numeric())
+keys(wordhash)
 
 trie_prob <- function(trie, n) {
-  keys <- get_keys(trie)
-  keys_current <- keys[sapply(strsplit(keys, " "), length) == n]
+  
   for (i in n:1) {
+    keys <- get_keys(trie)
+    keys_current <- keys[sapply(strsplit(keys, " "), length) == i]
     values_current <- unlist(prefix_match(trie, keys_current))
     keys_trim <- trimEndWord(keys_current)
-    values_trim <- unlist(prefix_match(trie, keys_current))
+    values_trim <- unlist(prefix_match(trie, keys_trim))
     if (i >= 2) {
       trie_add(trie, keys_current, values_current/values_trim)
     } else {
       trie_add(trie, keys_current, values_current/sum(values_current))
     }
-    keys_current <- keys_trim
   }
   trie
 }
