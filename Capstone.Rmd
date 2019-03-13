@@ -127,7 +127,9 @@ blog_corpus <- VCorpus(VectorSource(en.blogs.subset))
 
 corpuses <- list(twitter_corpus, news_corpus, blog_corpus)
 preprocess <- function(corpus) {
-  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removePunctuation, preserve_intra_word_contractions = TRUE,
+                  preserve_intra_word_dashes = TRUE,
+                  ucp = TRUE)
   corpus <- tm_map(corpus, removeNumbers)
   #corpus <- tm_map(corpus, removeWords, stopwords(kind = "en"))
   corpus <- tm_map(corpus, stripWhitespace)
@@ -299,8 +301,22 @@ trimEndWord <- function(x) {
   splitted <- strsplit(x, " ")
   sapply(splitted, function(x) {paste(x[1 : length(x) - 1], collapse = " ")})
 }
+ # this extends the hash key lookup by allowing vector input
+valuesVector <- function(x, h) {
+  v <- vector(mode = "numeric", length = length(x))
+  for (i in 1:length(x)) {
+    if(has.key(x[i], h)) {
+      v[i] = h[[x[i]]]
+    } else {
+      v[i] = NA
+    }
+  }
+  v
+}
 
-# combined training method
+# combined training method, compute all n-grams and their frequency in a trie structure
+# training parameter is the percent, and max n of n-gram
+# return a list containing the trie and n
 train <- function(percent = 0.01, n = 4) {
     # subsetting data
     corpus_sampling <- c(corpus_subset("twitter", percent), 
@@ -324,9 +340,14 @@ train <- function(percent = 0.01, n = 4) {
         if (i == 1) {
             total <- sum(newWordCount)
             trie_add(wordtrie, keys = newWordList, values = newWordCount/total)
+            TOP_UNIGRAM = names(findMostFreqTerms(dtm)[[1]][1])
         } else {
             newWordParent <- trimEndWord(newWordList)
-            parentCount <- values(wordhash[newWordParent])
+            parentCount <- valuesVector(newWordParent, wordhash)
+            #print(newWordParent[! has.key(newWordParent, wordhash)])
+            if (length(newWordParent) != length(parentCount)) {
+              print(paste(c("newWordParent: ", length(newWordParent), " parentCount: ", length(parentCount)), collapse = " "))
+            }
             trie_add(wordtrie, keys = newWordList, values = newWordCount/parentCount)
         }
         clear(wordhash) # just save keys that are required for next round
@@ -334,33 +355,36 @@ train <- function(percent = 0.01, n = 4) {
     }
     rm(wordhash)
 
-    wordtrie
+    list(trie = wordtrie, ngram = n, top.unigram = TOP_UNIGRAM)
 }
 
-wordhash <- train(percent = 0.0001)
+model <- train(percent = 0.001)
 
-wordtrie <- trie(character(), numeric())
-keys(wordhash)
-
-trie_prob <- function(trie, n) {
+predictScalar <- function(model, newData) {
+  wordtrie <- model$trie
+  N <- model$ngram
   
-  for (i in n:1) {
-    keys <- get_keys(trie)
-    keys_current <- keys[sapply(strsplit(keys, " "), length) == i]
-    values_current <- unlist(prefix_match(trie, keys_current))
-    keys_trim <- trimEndWord(keys_current)
-    values_trim <- unlist(prefix_match(trie, keys_trim))
-    if (i >= 2) {
-      trie_add(trie, keys_current, values_current/values_trim)
+  n <- length(unlist(str_split(newData, " ")))
+  if (n >= N) {
+    stop("new data has more words than model can predict")
+  } else if (n == 0) {
+    return (model$top.unigram)
+  } else {
+    candidatePosition <- str_detect(get_keys(wordtrie), paste(c("^", newData, " \\w+$"), collapse = ""))
+    candidatesKey <- get_keys(wordtrie)[candidatePosition]
+    candidatesValue <- get_values(wordtrie)[candidatePosition]
+    candidates <- data.frame(candidatesKey, candidatesValue) %>% arrange(-candidatesValue)
+    if (nrow(candidates) > 0) {
+      return (str_split(candidates[1,1], " ")[[1]][n + 1])
     } else {
-      trie_add(trie, keys_current, values_current/sum(values_current))
+      return (predictScalar(model, str_replace(newData, "^\\w+ ", "")))
     }
   }
-  trie
 }
 
-wordtrie <- trie(keys = c("A", "A a", "A b", "A c", "A a a", "B", "B a", "B b", "B c"), values <- c(5, 3, 1, 1, 1, 6, 2, 2, 2))
-trie_prob(wordtrie, 3)
+predictFromNgram(model, "at the")
+# wordtrie <- trie(keys = c("A", "A a", "A b", "A c", "A a a", "B", "B a", "B b", "B c"), values <- c(5, 3, 1, 1, 1, 6, 2, 2, 2))
+# trie_prob(wordtrie, 3)
 predictNext <- function(sentence) {
     
 }
