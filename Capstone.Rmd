@@ -278,12 +278,15 @@ predictWord3 <- function(query1, query2) {
 }
 
 processSentence <- function(sentence) {
-    sentence <- removePunctuation(sentence)
+    sentence <- removePunctuation(sentence, preserve_intra_word_contractions = TRUE,
+                  preserve_intra_word_dashes = TRUE,
+                  ucp = TRUE)
     sentence <- removeNumbers(sentence)
     sentence <- stripWhitespace(sentence)
     sentence <- tolower(sentence)
     sentence
 }
+
 
 predictNext <- function(sentence, n = 3) {
     processed <- processSentence(sentence)
@@ -358,36 +361,63 @@ train <- function(percent = 0.01, n = 4) {
     list(trie = wordtrie, ngram = n, top.unigram = TOP_UNIGRAM)
 }
 
+Rprof()
 model <- train(percent = 0.001)
 
 predictScalar <- function(model, newData) {
+  ## trim leading and trailing white spaces
+  newData = trimws(newData)
+  ## if this is an empty string, return the most frequent unigram
+  if (str_count(newData) == 0) {
+    return (model$top.unigram)
+  } 
+  ## else, use to frequency trie to make a prediction
   wordtrie <- model$trie
   N <- model$ngram
-  
   n <- length(unlist(str_split(newData, " ")))
+  ## Being an N-gram model, the function will stop if the query word count is not between [1, N-1]
   if (n >= N) {
     stop("new data has more words than model can predict")
-  } else if (n == 0) {
-    return (model$top.unigram)
   } else {
+    ## use regular expression to find candidate n+1 gram
     candidatePosition <- str_detect(get_keys(wordtrie), paste(c("^", newData, " \\w+$"), collapse = ""))
     candidatesKey <- get_keys(wordtrie)[candidatePosition]
     candidatesValue <- get_values(wordtrie)[candidatePosition]
+    ## arrange candidates by their frequency
     candidates <- data.frame(candidatesKey, candidatesValue) %>% arrange(-candidatesValue)
+    ## if we found at least one candidate, we return the most frequent one
     if (nrow(candidates) > 0) {
       return (str_split(candidates[1,1], " ")[[1]][n + 1])
-    } else {
+    } else { ## otherwise, we remove one word from the n-gram query, and make a recursive call
       return (predictScalar(model, str_replace(newData, "^\\w+ ", "")))
     }
   }
 }
 
-predictFromNgram(model, "at the")
+predictScalar(model, "at the")
+predictScalar(model, "at")
+predictScalar(model, "at the same")
+predictScalar(model, "")
+predictScalar(model, "jax has a")
 # wordtrie <- trie(keys = c("A", "A a", "A b", "A c", "A a a", "B", "B a", "B b", "B c"), values <- c(5, 3, 1, 1, 1, 6, 2, 2, 2))
 # trie_prob(wordtrie, 3)
-predictNext <- function(sentence) {
-    
+predictNext <- function(model, sentences) {
+  predictions <- vector(mode = "character", length = length(sentences))
+  for (i in 1:length(sentences)) {
+    processed <- processSentence(sentences[i])
+    tokens = unlist(str_split(processed, " "))
+    sentence_token_count = length(tokens)
+    N = model$ngram
+    if (sentence_token_count >= N) {
+      tokens = tail(tokens, N - 1)
+    }
+    query = paste(tokens, collapse = " ")
+    prediction = predictScalar(model, query)
+    predictions[i] = prediction
+  }
+  predictions
 }
+predictNext(model, c("at the", "hello"))
 ```
 
 ```{r}
@@ -401,8 +431,6 @@ quizes <- c("The guy in front of me just bought a pound of bacon, a bouquet, and
                "After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little", 
                "Be grateful for the good times and keep the faith during the", 
                "If this isn't the cutest thing you've ever seen, then you must be")
-for (i in 1: length(quizes)) {
-    print(paste(i, predictNext(quizes[i])))
-}
+predictNext(model, quizes)
 ```
 
