@@ -128,8 +128,7 @@ blog_corpus <- VCorpus(VectorSource(en.blogs.subset))
 corpuses <- list(twitter_corpus, news_corpus, blog_corpus)
 preprocess <- function(corpus) {
   corpus <- tm_map(corpus, removePunctuation, preserve_intra_word_contractions = TRUE,
-                  preserve_intra_word_dashes = TRUE,
-                  ucp = TRUE)
+                  preserve_intra_word_dashes = TRUE)
   corpus <- tm_map(corpus, removeNumbers)
   #corpus <- tm_map(corpus, removeWords, stopwords(kind = "en"))
   corpus <- tm_map(corpus, stripWhitespace)
@@ -253,30 +252,6 @@ resource <- onegram_dataframe %>% inner_join(bigram_dataframe, by = "word1") %>%
 ```
 
 ```{r}
-predictWord1 <- function() {
-    onegram_dataframe[1,1]
-}
-
-predictWord2 <- function(query) {
-    selection <- resource %>% filter(word1 == query)
-    candidates <- unique(selection$word2)
-    if (length(candidates) > 0) {
-        return(candidates[1])
-    } else {
-        return(predictWord1())
-    }
-}
-
-predictWord3 <- function(query1, query2) {
-    selection <- resource %>% filter(word1 == query1 & word2 == query2)
-    candidates <- unique(selection$word3)
-    if (length(candidates) > 0) {
-        return (candidates[1])
-    } else {
-        return(predictWord2(query1))
-    }
-}
-
 processSentence <- function(sentence) {
     sentence <- removePunctuation(sentence, preserve_intra_word_contractions = TRUE,
                   preserve_intra_word_dashes = TRUE,
@@ -311,11 +286,63 @@ valuesVector <- function(x, h) {
     if(has.key(x[i], h)) {
       v[i] = h[[x[i]]]
     } else {
-      v[i] = NA
+      v[i] = 0
     }
   }
   v
 }
+
+# update hash: 
+# put if key is not present
+# update value by adding new value if key is present 
+updateCounts <- function(h, keys, values) {
+  if (length(keys) != length(values)) {
+    stop("keys and values have different length")
+  }
+  currentValues <- valuesVector(keys, h)
+  .set(h, keys, currentValues + values)
+  h
+}
+
+# process specified file, update n-gram count
+freqCount <- function(h, file, ngrams = 4, batch_size = 1000) {
+  LINE_PROCESSED = 0
+  fcon <- file(file, "r")
+  batch <- vector(mode = "character", length = 1000L)
+  batch_i <- 1
+  line <- readLines(fcon, n = 1, skipNul = TRUE)
+  while(TRUE) {
+    LINE_PROCESSED = LINE_PROCESSED + 1
+    if (length(line) == 0) {
+      close(fcon)
+      break
+    }
+    batch[batch_i] <- line
+    batch_i = batch_i + 1
+    if (batch_i > batch_size | length(line) == 0) {
+      print(paste(c("Total lines processed:", LINE_PROCESSED), collapse = " "))
+      corpus_batch <- VCorpus(VectorSource(batch))
+      preprocessed <- preprocess(corpus_batch)
+      for (j in 1:ngrams) {
+        tokenizer = nGramTokenizer(j)
+        dtm <- DocumentTermMatrix(preprocessed, list(tokenize = tokenizer, wordLengths=c(1, Inf)))
+        keys <- colnames(dtm)
+        freq <- col_sums(dtm)
+        updateCounts(h, keys, freq)
+      }
+      batch <- vector(mode = "character", length = 1000L)
+      batch_i <- 1
+    }
+    line <- readLines(fcon, n = 1, skipNul = TRUE)
+  }
+  h
+}
+require(tm)
+require(slam)
+Rprof()
+h <- hash()
+h <- freqCount(h, EN.TWITTER.PATH, batch_size = 10000)
+#freqCount(h, "/Users/zhangx/git/datasciencecoursera/final/en_subsets/twitter_subset.txt")
 
 # combined training method, compute all n-grams and their frequency in a trie structure
 # training parameter is the percent, and max n of n-gram
@@ -418,6 +445,13 @@ predictNext <- function(model, sentences) {
   predictions
 }
 predictNext(model, c("at the", "hello"))
+
+
+#how to make it more efficient?
+# 1. batch process files: read in 1000 lines, process and then move to the next 1000
+# 2. count the N-gram frequencies, update the hash
+# 3. move all hash into trie to save space
+# 4. use trie for prediction
 ```
 
 ```{r}
