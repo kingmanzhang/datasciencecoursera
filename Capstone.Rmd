@@ -88,10 +88,10 @@ corpus_subset <- function(corpus_name = "twitter", percent = 0.001) {
     subset_lines
 }
 
-subsetAndSave <- function() {
-    en.twitter.subset <- corpus_subset("twitter", percent = 0.001)
-    en.news.subset <- corpus_subset("news", percent = 0.001)
-    en.blogs.subset <- corpus_subset("blogs", percent = 0.001)
+subsetAndSave <- function(percent) {
+    en.twitter.subset <- corpus_subset("twitter", percent)
+    en.news.subset <- corpus_subset("news", percent)
+    en.blogs.subset <- corpus_subset("blogs", percent)
 
     # We will save this for future use.
     if (!dir.exists("final/en_subsets")) {
@@ -102,8 +102,6 @@ subsetAndSave <- function() {
     write(en.news.subset, file = "final/en_subsets/news_subset.txt")
     write(en.blogs.subset, file = "final/en_subsets/blogs_subset.txt")
 }
-
-subsetAndSave()
 ```
 
 ```{r echo=FALSE}
@@ -252,42 +250,50 @@ resource <- onegram_dataframe %>% inner_join(bigram_dataframe, by = "word1") %>%
 ```
 
 ```{r}
-processSentence <- function(sentence) {
-    sentence <- removePunctuation(sentence, preserve_intra_word_contractions = TRUE,
-                  preserve_intra_word_dashes = TRUE,
-                  ucp = TRUE)
-    sentence <- removeNumbers(sentence)
-    sentence <- stripWhitespace(sentence)
-    sentence <- tolower(sentence)
-    sentence
+require(tm)
+require(slam)
+require(hash)
+require(triebeard)
+require(tidyverse)
+# preprocess corpus 
+preprocess <- function(corpus) {
+  corpus <- tm_map(corpus, removePunctuation, preserve_intra_word_contractions = TRUE,
+                  preserve_intra_word_dashes = TRUE)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, stemDocument)
+  #corpus <- tm_map(corpus, removeWords, stopwords(kind = "en"))
+  corpus <- tm_map(corpus, stripWhitespace)
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus
 }
 
-
-predictNext <- function(sentence, n = 3) {
-    processed <- processSentence(sentence)
-    tokens <- strsplit(sentence, " ")[[1]]
-    NUM_TOKENS <- length(tokens)
-    if (NUM_TOKENS <= 1) {
-        predictWord2(tokens[1])
-    } else {
-        predictWord3(tokens[NUM_TOKENS - 1], tokens[NUM_TOKENS])
-    }
+nGramTokenizer <- function(n) { 
+    function(x) {
+        unlist(lapply(ngrams(words(x), n), paste, collapse = " "), use.names = FALSE)
+    }   
 }
 
-# trim end word
+# trim end word to convert n-grams to (n-1)-grams
 trimEndWord <- function(x) {
   splitted <- strsplit(x, " ")
   sapply(splitted, function(x) {paste(x[1 : length(x) - 1], collapse = " ")})
 }
- # this extends the hash key lookup by allowing vector input
+
+# this extends the hash key lookup by allowing vector input
 valuesVector <- function(x, h) {
   v <- vector(mode = "numeric", length = length(x))
   for (i in 1:length(x)) {
-    if(has.key(x[i], h)) {
-      v[i] = h[[x[i]]]
-    } else {
+    y <- h[[x[i]]]
+    if (is.null(y)) {
       v[i] = 0
+    } else {
+      v[i] = y
     }
+    # if(has.key(x[i], h)) {
+    #   v[i] = h[[x[i]]]
+    # } else {
+    #   v[i] = 0
+    # }
   }
   v
 }
@@ -305,91 +311,247 @@ updateCounts <- function(h, keys, values) {
 }
 
 # process specified file, update n-gram count
-freqCount <- function(h, file, ngrams = 4, batch_size = 1000) {
+freqCount <- function(h, file, ngrams, batch_size) {
   LINE_PROCESSED = 0
   fcon <- file(file, "r")
-  batch <- vector(mode = "character", length = 1000L)
+  batch <- vector(mode = "character", length = batch_size)
   batch_i <- 1
   line <- readLines(fcon, n = 1, skipNul = TRUE)
-  while(TRUE) {
+  while(length(line) != 0) {
     LINE_PROCESSED = LINE_PROCESSED + 1
-    if (length(line) == 0) {
-      close(fcon)
-      break
-    }
     batch[batch_i] <- line
     batch_i = batch_i + 1
+    line = readLines(fcon, n = 1, skipNul = TRUE)
     if (batch_i > batch_size | length(line) == 0) {
-      print(paste(c("Total lines processed:", LINE_PROCESSED), collapse = " "))
+      message(paste(c("Total lines processed:", LINE_PROCESSED), collapse = " "))
       corpus_batch <- VCorpus(VectorSource(batch))
       preprocessed <- preprocess(corpus_batch)
       for (j in 1:ngrams) {
         tokenizer = nGramTokenizer(j)
         dtm <- DocumentTermMatrix(preprocessed, list(tokenize = tokenizer, wordLengths=c(1, Inf)))
         keys <- colnames(dtm)
+        require(slam)
         freq <- col_sums(dtm)
         updateCounts(h, keys, freq)
       }
-      batch <- vector(mode = "character", length = 1000L)
+      batch <- vector(mode = "character", length = batch_size)
       batch_i <- 1
     }
-    line <- readLines(fcon, n = 1, skipNul = TRUE)
+  }
+  close(fcon)
+  h
+}
+
+# process specified vector of training data, update n-gram count
+freqCount2 <- function(h, lines, ngrams, batch_size) {
+  TOTAL_LINES <- length(lines)
+  batch_start <- 1
+  end = FALSE
+  while(TRUE) {
+    batch_end <- batch_start + batch_size - 1
+    if (batch_end >= TOTAL_LINES) {
+      end = TRUE
+      batch_end = TOTAL_LINES
+    }
+    #print(lines[batch_start:batch_end])
+     corpus_batch <- VCorpus(VectorSource(lines[batch_start : batch_end]))
+     preprocessed <- preprocess(corpus_batch)
+      for (j in 1:ngrams) {
+        tokenizer = nGramTokenizer(j)
+        dtm <- DocumentTermMatrix(preprocessed, list(tokenize = tokenizer, wordLengths=c(1, Inf)))
+        keys <- colnames(dtm)
+        require(slam)
+        freq <- col_sums(dtm)
+        updateCounts(h[[j]], keys, freq)
+      }
+     if (end) {
+       break
+     } else {
+       batch_start = batch_end + 1
+     }
   }
   h
 }
-require(tm)
-require(slam)
+
+#freqCount2(h, 1:50, 4, 8)
+# convert the hash into a trie to save space. One trie records word to probabilities, the other record word to word themselves
+hash2trie <- function(h, n) {
+  t <- trie(character(), numeric())
+  t2 <- trie(character(), character())
+  for (i in n:1) {
+    keys <- keys(h)
+    ngrams <- keys[sapply(str_split(keys, " "), length) == i]
+    ngrams_freq <- valuesVector(ngrams, h)
+    if (i == 1){
+      TOP_UNIGRAM = ngrams[which.max(ngrams_freq)]
+      TOP_UNIGRAM_FREQ = max(ngrams_freq)
+      ngram_prop <- ngrams_freq / TOP_UNIGRAM_FREQ
+    } else {
+      parents <- trimEndWord(ngrams) 
+      parents_freq <- valuesVector(parents, h)
+      ngram_prop <- ngrams_freq / parents_freq
+    }
+    trie_add(t, ngrams, ngram_prop)
+    trie_add(t2, ngrams, ngrams)
+    del(ngrams, h)
+  }
+  list(trie.prob = t, trie.word = t2, ngram = n, top.unigram = TOP_UNIGRAM)
+}
+
+hash2trie2 <- function(h, n) {
+  t <- trie(character(), numeric())
+  t2 <- trie(character(), character())
+  for (i in n:1) {
+    ngrams <- keys(h[[i]])
+    ngrams_freq <- valuesVector(ngrams, h[[i]])
+    if (i == 1){
+      TOP_UNIGRAM = ngrams[which.max(ngrams_freq)]
+      TOP_UNIGRAM_FREQ = max(ngrams_freq)
+      ngram_prop <- ngrams_freq / TOP_UNIGRAM_FREQ
+    } else {
+      parents <- trimEndWord(ngrams) 
+      parents_freq <- valuesVector(parents, h[[i - 1]])
+      ngram_prop <- ngrams_freq / parents_freq
+    }
+    trie_add(t, ngrams, ngram_prop)
+    trie_add(t2, ngrams, ngrams)
+    del(ngrams, h[[i]])
+  }
+  list(trie.prob = t, trie.word = t2, ngram = n, top.unigram = TOP_UNIGRAM)
+}
+
+train <- function(files, percent = 0.001, ngrams = 4, batch_size = 1000) {
+  h <- hash()
+  for (file in files) {
+    fcon <- file(file, "r")
+    subset <- vector(mode = "character")
+    i = 0
+    line = readLines(fcon, n = 1, skipNul = TRUE)
+    while(length(line) != 0) {
+      if (rbinom(1, 1, percent)) {
+        subset[i] = line
+        i = i + 1
+      }
+      line = readLines(fcon, n = 1, skipNul = TRUE)
+    }
+    close(fcon)
+    write(subset, file = "capstone_temp.txt")
+    
+    h <- freqCount(h, "capstone_temp.txt" , ngrams, batch_size)
+  }
+  if (file.exists("capstone_temp.txt")){
+    file.remove("capstone_temp.txt")
+  }
+  # h <- hash()
+  # h <- freqCount(h, "final/en_subsets/twitter_subset.txt" , ngrams = 4, batch_size = 5000)
+  # h <- freqCount(h, "final/en_subsets/news_subset.txt" , ngrams, batch_size)
+  # h <- freqCount(h, "final/en_subsets/blogs_subset.txt" , ngrams, batch_size)
+  model <- hash2trie(h, n = ngrams)
+  rm(h)
+  model
+}
+
+train2 <- function(files, percent = 0.001, ngrams = 4, batch_size = 1000) {
+  h <- list()
+  for (i in 1:ngrams) {
+    h[[i]] = hash()
+  }
+  for (file in files) {
+    fcon <- file(file, "r")
+    alllines <- readLines(fcon, skipNul = TRUE)
+    close(fcon)
+    L = length(alllines)
+    subset <- sample(alllines, floor(L * percent), replace = FALSE)
+    rm(alllines)
+    h <- freqCount2(h, subset , ngrams, batch_size)
+    rm(subset)
+  }
+  model <- hash2trie2(h, n = ngrams)
+  rm(h)
+  model
+}
+
 Rprof()
-h <- hash()
-h <- freqCount(h, EN.TWITTER.PATH, batch_size = 10000)
-#freqCount(h, "/Users/zhangx/git/datasciencecoursera/final/en_subsets/twitter_subset.txt")
+model <- train(c(EN.TWITTER.PATH, EN.BLOGS.PATH, EN.NEWS.PATH), percent = 0.001, batch_size = 5000)
+
+model <- train2(c(EN.TWITTER.PATH, EN.BLOGS.PATH, EN.NEWS.PATH), percent = 0.001, batch_size = 5000)
+
+
+#h <- hash()
+#h <- freqCount(h, EN.TWITTER.PATH, batch_size = 10000)
+#h <- freqCount(h, "/Users/zhangx/git/datasciencecoursera/final/en_subsets/twitter_subset.txt",ngrams = 6)
 
 # combined training method, compute all n-grams and their frequency in a trie structure
 # training parameter is the percent, and max n of n-gram
 # return a list containing the trie and n
-train <- function(percent = 0.01, n = 4) {
-    # subsetting data
-    corpus_sampling <- c(corpus_subset("twitter", percent), 
-                         corpus_subset("blogs", percent), 
-                         corpus_subset("news", percent))
-    # combining data
-    corpus_sampling <- str_c(corpus_sampling, collapse = " ")
-    corpus_sampling <- VCorpus(VectorSource(corpus_sampling))
-    # preprocess data
-    preprocessed <- preprocess(corpus_sampling)
-    # create unigram, bigram, ... n-gram
-    require(hash)
-    require(triebeard)
-    wordhash <- hash()
-    wordtrie <- trie(character(), numeric())
-    for (i in 1:n) {
-        tokenizer = nGramTokenizer(i)
-        dtm <- DocumentTermMatrix(preprocessed, list(tokenize = tokenizer, wordLengths=c(1, Inf)))
-        newWordList <- colnames(dtm)
-        newWordCount <- dtm$v
-        if (i == 1) {
-            total <- sum(newWordCount)
-            trie_add(wordtrie, keys = newWordList, values = newWordCount/total)
-            TOP_UNIGRAM = names(findMostFreqTerms(dtm)[[1]][1])
-        } else {
-            newWordParent <- trimEndWord(newWordList)
-            parentCount <- valuesVector(newWordParent, wordhash)
-            #print(newWordParent[! has.key(newWordParent, wordhash)])
-            if (length(newWordParent) != length(parentCount)) {
-              print(paste(c("newWordParent: ", length(newWordParent), " parentCount: ", length(parentCount)), collapse = " "))
-            }
-            trie_add(wordtrie, keys = newWordList, values = newWordCount/parentCount)
-        }
-        clear(wordhash) # just save keys that are required for next round
-        .set(wordhash, keys = newWordList, values = newWordCount)
-    }
-    rm(wordhash)
+# train <- function(percent = 0.01, n = 4) {
+#     # subsetting data
+#     corpus_sampling <- c(corpus_subset("twitter", percent), 
+#                          corpus_subset("blogs", percent), 
+#                          corpus_subset("news", percent))
+#     # combining data
+#     corpus_sampling <- str_c(corpus_sampling, collapse = " ")
+#     corpus_sampling <- VCorpus(VectorSource(corpus_sampling))
+#     # preprocess data
+#     preprocessed <- preprocess(corpus_sampling)
+#     # create unigram, bigram, ... n-gram
+#     require(hash)
+#     require(triebeard)
+#     wordhash <- hash()
+#     wordtrie <- trie(character(), numeric())
+#     for (i in 1:n) {
+#         tokenizer = nGramTokenizer(i)
+#         dtm <- DocumentTermMatrix(preprocessed, list(tokenize = tokenizer, wordLengths=c(1, Inf)))
+#         newWordList <- colnames(dtm)
+#         newWordCount <- dtm$v
+#         if (i == 1) {
+#             total <- sum(newWordCount)
+#             trie_add(wordtrie, keys = newWordList, values = newWordCount/total)
+#             TOP_UNIGRAM = names(findMostFreqTerms(dtm)[[1]][1])
+#         } else {
+#             newWordParent <- trimEndWord(newWordList)
+#             parentCount <- valuesVector(newWordParent, wordhash)
+#             #print(newWordParent[! has.key(newWordParent, wordhash)])
+#             if (length(newWordParent) != length(parentCount)) {
+#               print(paste(c("newWordParent: ", length(newWordParent), " parentCount: ", length(parentCount)), collapse = " "))
+#             }
+#             trie_add(wordtrie, keys = newWordList, values = newWordCount/parentCount)
+#         }
+#         clear(wordhash) # just save keys that are required for next round
+#         .set(wordhash, keys = newWordList, values = newWordCount)
+#     }
+#     rm(wordhash)
+# 
+#     list(trie = wordtrie, ngram = n, top.unigram = TOP_UNIGRAM)
+# }
 
-    list(trie = wordtrie, ngram = n, top.unigram = TOP_UNIGRAM)
+
+processSentence <- function(sentence) {
+    sentence <- removePunctuation(sentence, preserve_intra_word_contractions = TRUE,
+                  preserve_intra_word_dashes = TRUE,
+                  ucp = TRUE)
+    sentence <- removeNumbers(sentence)
+    #sentence <- removeWords(sentence, stopwords("en"))
+    sentence <- stripWhitespace(sentence)
+    sentence <- tolower(sentence)
+    sentence
 }
 
-Rprof()
-model <- train(percent = 0.001)
+trimLeadWord <- function(x) {
+  tokens <- unlist(str_split(x, " "))
+  LENGTH = length(tokens)
+  if (LENGTH <= 1) {
+    return ("")
+  } else {
+    return(str_c(tokens[2:LENGTH], collapse = " "))
+  }
+  
+}
+
+wordCount <- function(x){
+  s <- str_split(x, " ")
+  sapply(s, length)
+}
 
 predictScalar <- function(model, newData) {
   ## trim leading and trailing white spaces
@@ -399,7 +561,8 @@ predictScalar <- function(model, newData) {
     return (model$top.unigram)
   } 
   ## else, use to frequency trie to make a prediction
-  wordtrie <- model$trie
+  trie.prob <- model$trie.prob
+  trie.word <- model$trie.word
   N <- model$ngram
   n <- length(unlist(str_split(newData, " ")))
   ## Being an N-gram model, the function will stop if the query word count is not between [1, N-1]
@@ -407,16 +570,20 @@ predictScalar <- function(model, newData) {
     stop("new data has more words than model can predict")
   } else {
     ## use regular expression to find candidate n+1 gram
-    candidatePosition <- str_detect(get_keys(wordtrie), paste(c("^", newData, " \\w+$"), collapse = ""))
-    candidatesKey <- get_keys(wordtrie)[candidatePosition]
-    candidatesValue <- get_values(wordtrie)[candidatePosition]
+    #candidatePosition <- str_detect(get_keys(wordtrie), paste(c("^", newData, " \\w+$"), collapse = ""))
+    #candidatesKey <- get_keys(wordtrie)[candidatePosition]
+    #candidatesValue <- get_values(wordtrie)[candidatePosition]
+    matchedKeys <- unlist(prefix_match(trie.word, newData))
+    matchedValues <- unlist(prefix_match(trie.prob, newData))
     ## arrange candidates by their frequency
-    candidates <- data.frame(candidatesKey, candidatesValue) %>% arrange(-candidatesValue)
+    candidates <- data.frame(ngram = matchedKeys, prob = matchedValues) %>% filter(wordCount(ngram) == n + 1) %>%
+      filter(str_detect(ngram, str_c(newData, " "))) %>% arrange(-prob)
     ## if we found at least one candidate, we return the most frequent one
     if (nrow(candidates) > 0) {
+      #print(candidates)
       return (str_split(candidates[1,1], " ")[[1]][n + 1])
     } else { ## otherwise, we remove one word from the n-gram query, and make a recursive call
-      return (predictScalar(model, str_replace(newData, "^\\w+ ", "")))
+      return (predictScalar(model, trimLeadWord(newData)))
     }
   }
 }
@@ -466,5 +633,19 @@ quizes <- c("The guy in front of me just bought a pound of bacon, a bouquet, and
                "Be grateful for the good times and keep the faith during the", 
                "If this isn't the cutest thing you've ever seen, then you must be")
 predictNext(model, quizes)
+```
+```{r}
+quize2 <- c(
+  "When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd", 
+  "Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his",
+  "I'd give anything to see arctic monkeys this",
+  "Talking to your mom has the same effect as a hug and helps reduce your",
+  "When you were in Holland you were like 1 inch away from me but you hadn't time to take a",
+  "I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the",
+  "I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each",
+  "Every inch of you is perfect from the bottom to the",
+  "I’m thankful my childhood was filled with imagination and bruises from playing",
+  "I like how the same people are in almost all of Adam Sandler's")
+predictNext(model, quize2)
 ```
 
