@@ -12,14 +12,15 @@ output: html_document
 We will explore the Swiftkey dataset to develop some intutitions about this project.
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+require(knitr)
+knitr::opts_chunk$set(echo = TRUE, root.dir = "~/git/datasciencecoursera")
 ```
 
 ## Download data
 
 We will download the dataset directly from Coursera website. We can see that we have blogs, news and twitter texts for four languages. We will work on the English texts.
 ```{r}
-setwd("~/git/datasciencecoursera")
+#setwd("~/git/datasciencecoursera")
 fileurl = "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
 destfile = "Coursera-Swiftkey.zip"
 if (!file.exists(destfile)) {
@@ -241,13 +242,6 @@ The idea of the predictive model is using bigram to predict word based on previo
 
 One straightward way to implement the idea is using a data frame to save all 1,2 and 3-grams. In this dataframe, there will be three columns for individual words. The first column is just 1-grams words. The second column is the second word of bigrams, so that concatenating it with the word in the first column gives a bigram. This rule extends to the third column and trigrams. 
 
-```{r}
-onegram_dataframe <- onegram %>% rename(word1 = wordList) %>% mutate(word1 = as.character(word1))
-bigram_dataframe <- bigram %>% separate(wordList, c("word1", "word2"), " ")
-trigram_dataframe <- trigram %>% separate(wordList, c("word1", "word2", "word3"), " ")
-
-resource <- onegram_dataframe %>% inner_join(bigram_dataframe, by = "word1") %>% inner_join(trigram_dataframe, by = c("word1", "word2"))
-```
 
 ```{r}
 require(tm)
@@ -474,9 +468,24 @@ train2 <- function(files, percent = 0.001, ngrams = 4, batch_size = 1000) {
 Rprof()
 model <- train(c(EN.TWITTER.PATH, EN.BLOGS.PATH, EN.NEWS.PATH), percent = 0.001, batch_size = 5000)
 
-model <- train2(c(EN.TWITTER.PATH, EN.BLOGS.PATH, EN.NEWS.PATH), percent = 0.001, batch_size = 5000)
+model <- train2(c(EN.TWITTER.PATH, EN.BLOGS.PATH, EN.NEWS.PATH), percent = 0.001, batch_size = 5000, ngrams = 4)
 
+require(rlist)
+mySave <- function(model, file = "mymodel.rdata"){
+  triekeys <- get_keys(model$trie.word)
+  triewords <- get_values(model$trie.word)
+  trieprob <- get_values(model$trie.prob)
+  list.save(list(keys = triekeys, words = triewords, prob = trieprob, ngram = model$ngram, top.unigram = model$top.unigram), file)
+}
+mySave(model)
 
+loadModel <- function(file = "mymodel.rdata"){
+  mylist <- list.load(file)
+  trie.word <- trie(keys = mylist$keys, values = mylist$words)
+  trie.prob <- trie(keys = mylist$keys, values = mylist$prob)
+  list(trie.prob = trie.prob, trie.word = trie.word, ngram = mylist$ngram, top.unigram = mylist$top.unigram)
+}
+savedModel <- loadModel()
 #h <- hash()
 #h <- freqCount(h, EN.TWITTER.PATH, batch_size = 10000)
 #h <- freqCount(h, "/Users/zhangx/git/datasciencecoursera/final/en_subsets/twitter_subset.txt",ngrams = 6)
@@ -532,6 +541,7 @@ processSentence <- function(sentence) {
                   ucp = TRUE)
     sentence <- removeNumbers(sentence)
     #sentence <- removeWords(sentence, stopwords("en"))
+    sentence <- stemDocument(sentence)
     sentence <- stripWhitespace(sentence)
     sentence <- tolower(sentence)
     sentence
@@ -549,9 +559,22 @@ trimLeadWord <- function(x) {
 }
 
 wordCount <- function(x){
-  s <- str_split(x, " ")
-  sapply(s, length)
+  #t0 <- Sys.time()
+  #s <- str_split(x, " ")
+  #v <- sapply(s, length)
+  v = str_count(x, " ") + 1
+  #t1 <- Sys.time()
+  #print(t1 - t0)
+  v
 }
+
+# S <- 1000000
+# x <- vector(mode = "character", length = S)
+# L <- c(letters, " ", " ")
+# for (i in 1:S) {
+#   x[i] = paste(sample(L, 10, replace = FALSE), collapse = "")
+# }
+# y <- wordCount(x)
 
 predictScalar <- function(model, newData) {
   ## trim leading and trailing white spaces
@@ -573,14 +596,15 @@ predictScalar <- function(model, newData) {
     #candidatePosition <- str_detect(get_keys(wordtrie), paste(c("^", newData, " \\w+$"), collapse = ""))
     #candidatesKey <- get_keys(wordtrie)[candidatePosition]
     #candidatesValue <- get_values(wordtrie)[candidatePosition]
+    newData = paste0(newData, " ")
     matchedKeys <- unlist(prefix_match(trie.word, newData))
     matchedValues <- unlist(prefix_match(trie.prob, newData))
-    ## arrange candidates by their frequency
-    candidates <- data.frame(ngram = matchedKeys, prob = matchedValues) %>% filter(wordCount(ngram) == n + 1) %>%
-      filter(str_detect(ngram, str_c(newData, " "))) %>% arrange(-prob)
     ## if we found at least one candidate, we return the most frequent one
-    if (nrow(candidates) > 0) {
+    if (length(matchedKeys) >= 1 & !is.na(matchedKeys[1])) {
       #print(candidates)
+      FILTER = str_count(matchedKeys, " ") == n
+    ## arrange candidates by their frequency
+    candidates <- data.frame(ngram = matchedKeys[FILTER], prob = matchedValues[FILTER]) %>% arrange(-prob)
       return (str_split(candidates[1,1], " ")[[1]][n + 1])
     } else { ## otherwise, we remove one word from the n-gram query, and make a recursive call
       return (predictScalar(model, trimLeadWord(newData)))
@@ -590,7 +614,9 @@ predictScalar <- function(model, newData) {
 
 predictScalar(model, "at the")
 predictScalar(model, "at")
-predictScalar(model, "at the same")
+predictScalar(model, "a")
+predictScalar(model, "i")
+predictScalar(model, "at the same time")
 predictScalar(model, "")
 predictScalar(model, "jax has a")
 # wordtrie <- trie(keys = c("A", "A a", "A b", "A c", "A a a", "B", "B a", "B b", "B c"), values <- c(5, 3, 1, 1, 1, 6, 2, 2, 2))
