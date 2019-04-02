@@ -468,7 +468,7 @@ train2 <- function(files, percent = 0.001, ngrams = 4, batch_size = 1000) {
 Rprof()
 model <- train(c(EN.TWITTER.PATH, EN.BLOGS.PATH, EN.NEWS.PATH), percent = 0.001, batch_size = 5000)
 
-model <- train2(c(EN.TWITTER.PATH, EN.BLOGS.PATH, EN.NEWS.PATH), percent = 0.001, batch_size = 5000, ngrams = 4)
+model <- train2(c(EN.TWITTER.PATH, EN.BLOGS.PATH, EN.NEWS.PATH), percent = 0.002, batch_size = 5000, ngrams = 4)
 
 require(rlist)
 mySave <- function(model, file = "mymodel.rdata"){
@@ -485,7 +485,7 @@ loadModel <- function(file = "mymodel.rdata"){
   trie.prob <- trie(keys = mylist$keys, values = mylist$prob)
   list(trie.prob = trie.prob, trie.word = trie.word, ngram = mylist$ngram, top.unigram = mylist$top.unigram)
 }
-savedModel <- loadModel()
+savedModel <- loadModel(file = "mymodel.1percent.4gram.rdata")
 #h <- hash()
 #h <- freqCount(h, EN.TWITTER.PATH, batch_size = 10000)
 #h <- freqCount(h, "/Users/zhangx/git/datasciencecoursera/final/en_subsets/twitter_subset.txt",ngrams = 6)
@@ -612,6 +612,7 @@ predictScalar <- function(model, newData) {
   }
 }
 
+model = savedModel
 predictScalar(model, "at the")
 predictScalar(model, "at")
 predictScalar(model, "a")
@@ -645,6 +646,50 @@ predictNext(model, c("at the", "hello"))
 # 2. count the N-gram frequencies, update the hash
 # 3. move all hash into trie to save space
 # 4. use trie for prediction
+```
+
+Assess model performance. We randonly sample the corpus, tokenize them into bigrams, trigrams, and N+1-grams, then use them to test whether the model can predict the last token from the first few tokens.
+```{r}
+testGrams <- function(files, percent = 0.0001, ngrams = 4, batch_size = 1000){
+  h <- list()
+  for (i in 1:ngrams) {
+    h[[i]] = hash()
+  }
+  for (file in files) {
+    fcon <- file(file, "r")
+    alllines <- readLines(fcon, skipNul = TRUE)
+    close(fcon)
+    L = length(alllines)
+    subset <- sample(alllines, floor(L * percent), replace = FALSE)
+    rm(alllines)
+    h <- freqCount2(h, subset , ngrams, batch_size)
+    rm(subset)
+  }
+  testdf <- hash2df(h)
+  rm(h)
+  testdf
+}
+
+# change the hash to a dataframe. Hash h contains count for unigram
+hash2df <- function(h){
+  df <- data.frame(n = numeric(), query = character(), expected = character())
+  for (i in 2:length(h)){
+    allkeys <- keys(h[[i]])
+    allvalues <- values(h[[i]])
+    allkeys_split = str_split(allkeys, " ")
+    allkeys_query = sapply(allkeys_split, function(x) str_c(x[1:i-1], collapse = " ")) 
+    allkeys_value = sapply(allkeys_split, function(x) x[i])
+    # maybe we should weight repeatitions
+    dfsubset = data.frame(n = i - 1, query = rep(allkeys_query, allvalues), expected = rep(allkeys_value, allvalues))
+    df <- rbind(df, dfsubset)
+  }
+  df
+}
+
+testset <- testGrams(c(EN.TWITTER.PATH, EN.BLOGS.PATH, EN.NEWS.PATH))
+Rprof()
+predicted = predictNext(model, as.character(testset[testset$n==3,2][1:1000]))
+accuracy = sum(predicted == testset[testset$n == 3, 3][1:1000]) / length(predicted)
 ```
 
 ```{r}
